@@ -1,0 +1,170 @@
+#version 430 core
+
+layout( binding = 0, rgba32f ) uniform image2D frameBuffer;
+
+uniform vec3 eye;
+uniform vec3 ray00;
+uniform vec3 ray10;
+uniform vec3 ray01;
+uniform vec3 ray11;
+
+//
+//	Defines
+//
+#define MAX_SCENE_BOUNDS 1E+10
+#define NUM_BOXES 2
+#define NUM_SPHERES 1
+
+//
+//	Parameters
+//
+vec4 background = vec4( 0.0f, 0.0f, 0.0f, 1.0f );
+
+//
+// Geometry
+//
+
+struct box {
+	vec3 min;
+	vec3 max;
+	vec4 color;
+};
+
+struct sphere {
+	vec3 c;
+	float r;
+	vec4 color;
+};
+
+const box boxes[ NUM_BOXES ] = {
+	// Floor
+	{
+		vec3( -5.0, -0.1, -5.0),
+		vec3( 5.0, 0.0, 5.0 ),
+		vec4( 0.247, 0.749, 0.247, 1.0 )
+	},
+	{
+		vec3( -0.5, 0.0, -0.5),
+		vec3( 0.5, 1.0, 0.5 ),
+		vec4( 0.749, 0.247, 0.247, 1.0 )
+	}
+};
+
+const sphere spheres[ NUM_SPHERES ] = {
+	{
+		vec3( -2.0, 2.0, -2.0 ),
+		1.0,
+		vec4( 0.247, 0.5, 0.749, 1.0 )
+	}
+};
+
+//
+//	HitInfo
+//
+const uint enum_box = 1;
+const uint enum_sphere = 2;
+
+struct hitinfo {
+	uint type;
+	float near;
+	int i;
+};
+
+//
+//	Functions
+//
+
+vec2 intersectBox( vec3 origin, vec3 dir, const box b ){
+	vec3 tMin = ( b.min - origin ) / dir;
+	vec3 tMax = ( b.max - origin ) / dir;
+	vec3 t1 = min( tMin, tMax );
+	vec3 t2 = max( tMin, tMax );
+	float tNear = max( max( t1.x, t1.y ), t1.z );
+	float tFar = min( min( t2.x, t2.y ), t2.z );
+	return vec2( tNear, tFar );
+}
+
+bool intersectBoxes( vec3 origin, vec3 dir, out hitinfo info ){
+	float smallest = MAX_SCENE_BOUNDS;
+	bool found = false;
+	for( int i = 0 ; i < NUM_BOXES ; i++ ){
+		vec2 lambda = intersectBox( origin, dir, boxes[ i ] );
+		if( lambda.y > 0.0 && lambda.x < lambda.y && lambda.x < smallest ){
+			info.type = enum_box;
+			info.near = lambda.x;
+			info.i = i;
+			smallest = lambda.x;
+			found = true;
+		}
+	}
+	return found;
+}
+
+float intersectSphere( vec3 origin, vec3 dir, const sphere s ){
+	vec3 rc = origin - s.c;
+	float c = dot( rc, rc ) - ( s.r * s.r );
+	float b = dot( dir, rc );
+	float d = b * b - c;
+	float t = -b - sqrt( abs( d ) );
+	if( d < 0.0 || t < 0.0 )
+		return -1.0;	// didn't hit
+	return t;
+}
+
+bool intersectSpheres( vec3 origin, vec3 dir, out hitinfo info ){
+	float nearest = MAX_SCENE_BOUNDS;
+	bool found = false;
+	for( int i = 0 ; i < NUM_SPHERES ; i++ ){
+		float distance = intersectSphere( origin, dir, spheres[ i ] );
+		if( distance >= 0 && distance < nearest ){
+			info.type = enum_sphere;
+			info.near = distance;
+			info.i = i;
+			nearest = distance;
+			found = true;
+		}
+	}
+	return found;
+}
+
+vec4 trace( vec3 origin, vec3 dir ){
+	float nearest = MAX_SCENE_BOUNDS;
+	hitinfo info;
+
+	hitinfo temp;
+	if( intersectBoxes( origin, dir, temp ) ){
+		nearest = temp.near;
+		info = temp;
+	}
+	if( intersectSpheres( origin, dir, temp ) ){
+		if( nearest > temp.near ){
+			nearest = temp.near;
+			info = temp;
+		}
+	}
+
+	if( info.type == enum_box ){
+		return boxes[ info.i ].color;
+	} else if( info.type == enum_sphere ){
+		return spheres[ info.i ].color;
+	}
+
+	// Background
+	return background;
+}
+
+layout( local_size_x = 16, local_size_y = 16 ) in;
+
+//
+//	Main
+//
+void main( void ){
+	ivec2 pix = ivec2( gl_GlobalInvocationID.xy );
+	ivec2 size = imageSize( frameBuffer );
+	if( pix.x >= size.x || pix.y >= size.y )											// Compute Shader Workgroups Size ( x | y ) ^ 2
+		return;
+	vec2 pos = ( vec2( pix ) + vec2( 0.5 ) ) / vec2( size );
+	vec3 dir = mix( mix( ray00, ray01, pos.y ), mix( ray10, ray11, pos.y ), pos.x );
+	vec4 color = trace( eye, normalize( dir ) );
+	imageStore( frameBuffer, pix, color );
+}

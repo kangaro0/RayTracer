@@ -65,7 +65,7 @@ float fov = 45.0f * M_PI / 180.0f;
 float aspect = static_cast<float>( width ) / static_cast<float>( height );
 // Camera Rotation
 float rotationY = 0.0f;
-float zoom = 5.0f;
+float zoom = 10.0f;
 
 /*
 	GLuint

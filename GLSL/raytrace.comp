@@ -18,13 +18,16 @@ uniform vec3 ray11;
 #define NUM_BOXES 2
 #define NUM_SPHERES 2
 
-// Beleuchtung
+// Lighting
 #define INTENSITY_AMBIENT 1.0;
+
+// Constants
+#define M_PI 3.14159265359
 
 //
 //	Parameters
 //
-vec4 background = vec4( 0.0f, 0.0f, 0.0f, 1.0f );
+vec4 background = vec4( 0.89, 0.96, 1.0, 1.0 );
 
 //
 //	Lights
@@ -38,7 +41,7 @@ struct light {
 const light lights[ NUM_LIGHTS ] = {
 	{
 		vec3( 0.0, 15.0, 0.0 ),
-		1.0
+		1.5
 	}
 };
 
@@ -79,8 +82,8 @@ const box boxes[ NUM_BOXES ] = {
 		vec4( 0.247, 0.749, 0.247, 1.0 ),
 		{
 			1.0,
-			1.0,
-			1.0,
+			0.5,
+			0.5,
 			32
 		}
 	},
@@ -89,9 +92,9 @@ const box boxes[ NUM_BOXES ] = {
 		vec3( 0.5, 1.0, 0.5 ),
 		vec4( 0.749, 0.247, 0.247, 1.0 ),
 		{
-			1.0,
-			1.0,
-			1.0,
+			0.5,
+			0.5,
+			0.5,
 			32
 		}
 	}
@@ -165,15 +168,15 @@ vec2 intersectBox( vec3 origin, vec3 dir, const box b ){
 }
 
 bool intersectBoxes( vec3 origin, vec3 dir, out hitinfo info ){
-	float smallest = MAX_SCENE_BOUNDS;
+	float nearest = MAX_SCENE_BOUNDS;
 	bool found = false;
 	for( int i = 0 ; i < NUM_BOXES ; i++ ){
 		vec2 lambda = intersectBox( origin, dir, boxes[ i ] );
-		if( lambda.y > 0.0 && lambda.x < lambda.y && lambda.x < smallest ){
+		if( lambda.y > 0.0 && lambda.x < lambda.y && lambda.x < nearest ){
 			info.type = enum_box;
 			info.near = lambda.x;
 			info.i = i;
-			smallest = lambda.x;
+			nearest = lambda.x;
 			found = true;
 		}
 	}
@@ -187,7 +190,7 @@ float intersectSphere( vec3 origin, vec3 dir, const sphere s ){
 	float d = b * b - c;
 	float t = -b - sqrt( abs( d ) );
 	if( d < 0.0 || t < 0.0 )
-		return -1.0;	// didn't hit
+		return enum_invalid;	// didn't hit
 	return t;
 }
 
@@ -196,7 +199,7 @@ bool intersectSpheres( vec3 origin, vec3 dir, out hitinfo info ){
 	bool found = false;
 	for( int i = 0 ; i < NUM_SPHERES ; i++ ){
 		float lambda = intersectSphere( origin, dir, spheres[ i ] );
-		if( lambda >= 0 && lambda < nearest ){
+		if( lambda > 0.0 && lambda < nearest ){
 			info.type = enum_sphere;
 			info.near = lambda;
 			info.i = i;
@@ -211,18 +214,14 @@ bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 	float nearest = MAX_SCENE_BOUNDS;
 	bool found = false;
 
-	hitinfo temp = {
-		enum_invalid,
-		enum_invalid,
-		enum_invalid
-	};
+	hitinfo temp;
 	if( intersectBoxes( origin, dir, temp ) ){
 		nearest = temp.near;
 		info = temp;
 		found = true;
 	}	
 	if( intersectSpheres( origin, dir, temp ) ){
-		if( nearest > temp.near || temp.near == enum_invalid ){
+		if( nearest > temp.near ){
 			nearest = temp.near;
 			info = temp;
 			found = true;
@@ -231,31 +230,31 @@ bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 	return found;
 }
 
-bool intersectLight( vec3 origin, vec3 dir, vec3 hit ){
+bool intersectLight( vec3 origin, vec3 hit ){
+	vec3 dir = origin - hit;
 
 	hitinfo info;
 	if( intersectObjects( origin, dir, info ) ){
 		vec3 p = origin + info.near * dir;
 
-		if( equal( hit, p ) )
+		bvec3 eq = equal( ivec3( hit ), ivec3( p ) );
+		if( eq.x && eq.y && eq.z )
 			return true;
-		else
-			return false;
 	}
 
 	return false;
 }
 
-vec4 trace( vec3 origin, vec3 dir, int  ){
+vec4 trace( vec3 origin, vec3 dir ){
 	float nearest = MAX_SCENE_BOUNDS;
 	hitinfo info;
 
 	if( intersectObjects( origin, dir, info ) ){
 		// Object info
 		vec4 c;
-		vec4 k_ambient;
-		vec4 k_diffuse;
-		vec4 k_specular;
+		float k_ambient;
+		float k_diffuse;
+		float k_specular;
 		int exp_surface;
 
 		// Rays
@@ -284,7 +283,7 @@ vec4 trace( vec3 origin, vec3 dir, int  ){
 			k_specular = s.mat.k_specular;
 			exp_surface = s.mat.exp_surface;
 
-			n = normalize( p - spheres[ info.i ].m );
+			n = normalize( p - spheres[ info.i ].c );
 
 		}
 
@@ -292,10 +291,33 @@ vec4 trace( vec3 origin, vec3 dir, int  ){
 		r = dir - 2 * dot( n, dir ) * n;
 		// n = ...
 
-		// Intensities
-		float i_a = INTENSITY_AMBIENT * k_ambient;
-		float i_d = 
+		//
+		//	Phong
+		//
+		float norm = ( exp_surface + 2.0 ) / 2 * M_PI;
 
+		float i_in = 0.0;
+		float i_a = 0.0;
+		float i_d = 0.0;
+		float i_s = 0.0;
+		for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
+			// if current object gets hit by light source
+			if( intersectLight( lights[ i ].pos, p ) ){
+				
+				i_in += lights[ i ].intensity;
+				i_a += k_ambient * INTENSITY_AMBIENT;
+				i_d = i_in * k_diffuse * dot( n, normalize( lights[ i ].pos - p ) );
+				i_s = i_in * k_specular * norm * pow( dot( r, origin ), exp_surface );
+			}
+		}
+
+		float i_p = i_a + i_d + i_s;								// Final Phong
+		vec4 c_p = c;
+
+		//	Reflected
+		//vec4 c_r = k_specular * trace( p, r );
+
+		return c_p;
 	}
 
 	// Background

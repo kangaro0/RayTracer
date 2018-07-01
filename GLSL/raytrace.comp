@@ -11,14 +11,47 @@ uniform vec3 ray11;
 //
 //	Defines
 //
+#define RECURSION_DEPTH 5
 #define MAX_SCENE_BOUNDS 1E+10
+#define EPSILON 0.0001
+#define NUM_LIGHTS 1
 #define NUM_BOXES 2
-#define NUM_SPHERES 1
+#define NUM_SPHERES 2
+
+// Beleuchtung
+#define INTENSITY_AMBIENT 1.0;
 
 //
 //	Parameters
 //
 vec4 background = vec4( 0.0f, 0.0f, 0.0f, 1.0f );
+
+//
+//	Lights
+//
+
+struct light {
+	vec3 pos;
+	float intensity;
+};
+
+const light lights[ NUM_LIGHTS ] = {
+	{
+		vec3( 0.0, 15.0, 0.0 ),
+		1.0
+	}
+};
+
+// 
+//	Material
+//
+
+struct material {
+	float k_ambient;
+	float k_diffuse;
+	float k_specular;
+	int exp_surface;
+};
 
 //
 // Geometry
@@ -28,12 +61,14 @@ struct box {
 	vec3 min;
 	vec3 max;
 	vec4 color;
+	material mat;
 };
 
 struct sphere {
 	vec3 c;
 	float r;
 	vec4 color;
+	material mat;
 };
 
 const box boxes[ NUM_BOXES ] = {
@@ -41,26 +76,56 @@ const box boxes[ NUM_BOXES ] = {
 	{
 		vec3( -5.0, -0.1, -5.0),
 		vec3( 5.0, 0.0, 5.0 ),
-		vec4( 0.247, 0.749, 0.247, 1.0 )
+		vec4( 0.247, 0.749, 0.247, 1.0 ),
+		{
+			1.0,
+			1.0,
+			1.0,
+			32
+		}
 	},
 	{
 		vec3( -0.5, 0.0, -0.5),
 		vec3( 0.5, 1.0, 0.5 ),
-		vec4( 0.749, 0.247, 0.247, 1.0 )
+		vec4( 0.749, 0.247, 0.247, 1.0 ),
+		{
+			1.0,
+			1.0,
+			1.0,
+			32
+		}
 	}
 };
 
 const sphere spheres[ NUM_SPHERES ] = {
 	{
-		vec3( -2.0, 2.0, -2.0 ),
+		vec3( -2.5, 2.0, -2.5 ),
+		1.5,
+		vec4( 0.247, 0.5, 0.749, 1.0 ),
+		{
+			1.0,
+			1.0,
+			1.0,
+			32
+		}
+	},
+	{
+		vec3( 2.5, 1.0, 2.5 ),
 		1.0,
-		vec4( 0.247, 0.5, 0.749, 1.0 )
+		vec4( 0.137, 0.137, 0.137, 1.0 ),
+		{
+			1.0,
+			1.0,
+			1.0,
+			32
+		}
 	}
 };
 
 //
 //	HitInfo
 //
+const uint enum_invalid = -1;
 const uint enum_box = 1;
 const uint enum_sphere = 2;
 
@@ -73,6 +138,21 @@ struct hitinfo {
 //
 //	Functions
 //
+
+vec3 normalForBox( vec3 hit, const box b ){
+	if( hit.x < b.min.x + EPSILON )
+		return vec3( -1.0, 0.0, 0.0 );
+	else if( hit.x > b.max.x - EPSILON )
+		return vec3( 1.0, 0.0, 0.0 );
+	else if( hit.y < b.min.y + EPSILON )
+		return vec3( 0.0, -1.0, 0.0 );
+	else if( hit.y > b.max.y - EPSILON )
+		return vec3( 0.0, 1.0, 0.0 );
+	else if( hit.z < b.min.z + EPSILON )
+		return vec3( 0.0, 0.0, -1.0 );
+	else
+		return vec3( 0.0, 0.0, 1.0 );
+}
 
 vec2 intersectBox( vec3 origin, vec3 dir, const box b ){
 	vec3 tMin = ( b.min - origin ) / dir;
@@ -115,38 +195,107 @@ bool intersectSpheres( vec3 origin, vec3 dir, out hitinfo info ){
 	float nearest = MAX_SCENE_BOUNDS;
 	bool found = false;
 	for( int i = 0 ; i < NUM_SPHERES ; i++ ){
-		float distance = intersectSphere( origin, dir, spheres[ i ] );
-		if( distance >= 0 && distance < nearest ){
+		float lambda = intersectSphere( origin, dir, spheres[ i ] );
+		if( lambda >= 0 && lambda < nearest ){
 			info.type = enum_sphere;
-			info.near = distance;
+			info.near = lambda;
 			info.i = i;
-			nearest = distance;
+			nearest = lambda;
 			found = true;
 		}
 	}
 	return found;
 }
 
-vec4 trace( vec3 origin, vec3 dir ){
+bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 	float nearest = MAX_SCENE_BOUNDS;
-	hitinfo info;
+	bool found = false;
 
-	hitinfo temp;
+	hitinfo temp = {
+		enum_invalid,
+		enum_invalid,
+		enum_invalid
+	};
 	if( intersectBoxes( origin, dir, temp ) ){
 		nearest = temp.near;
 		info = temp;
-	}
+		found = true;
+	}	
 	if( intersectSpheres( origin, dir, temp ) ){
-		if( nearest > temp.near ){
+		if( nearest > temp.near || temp.near == enum_invalid ){
 			nearest = temp.near;
 			info = temp;
+			found = true;
 		}
 	}
+	return found;
+}
 
-	if( info.type == enum_box ){
-		return boxes[ info.i ].color;
-	} else if( info.type == enum_sphere ){
-		return spheres[ info.i ].color;
+bool intersectLight( vec3 origin, vec3 dir, vec3 hit ){
+
+	hitinfo info;
+	if( intersectObjects( origin, dir, info ) ){
+		vec3 p = origin + info.near * dir;
+
+		if( equal( hit, p ) )
+			return true;
+		else
+			return false;
+	}
+
+	return false;
+}
+
+vec4 trace( vec3 origin, vec3 dir, int  ){
+	float nearest = MAX_SCENE_BOUNDS;
+	hitinfo info;
+
+	if( intersectObjects( origin, dir, info ) ){
+		// Object info
+		vec4 c;
+		vec4 k_ambient;
+		vec4 k_diffuse;
+		vec4 k_specular;
+		int exp_surface;
+
+		// Rays
+		vec3 p;					// Hitpoint
+		vec3 n;					// Normale
+		vec3 r;					// Reflection
+		vec3 t;					// Refraction
+
+
+		if( info.type == enum_box ){
+
+			box b = boxes[ info .i ];
+			c = boxes[ info.i ].color;
+			k_ambient = b.mat.k_ambient;
+			k_diffuse = b.mat.k_diffuse;
+			k_specular = b.mat.k_specular;
+			exp_surface = b.mat.exp_surface;
+
+			n = normalForBox( p, boxes[ info.i ] );
+
+		} else if( info.type == enum_sphere ){
+			sphere s = spheres[ info. i ];
+			c = spheres[ info.i ].color;	
+			k_ambient = s.mat.k_ambient;
+			k_diffuse = s.mat.k_diffuse;
+			k_specular = s.mat.k_specular;
+			exp_surface = s.mat.exp_surface;
+
+			n = normalize( p - spheres[ info.i ].m );
+
+		}
+
+		p = origin + info.near * dir;
+		r = dir - 2 * dot( n, dir ) * n;
+		// n = ...
+
+		// Intensities
+		float i_a = INTENSITY_AMBIENT * k_ambient;
+		float i_d = 
+
 	}
 
 	// Background

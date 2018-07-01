@@ -64,8 +64,8 @@ int height = 1050;
 float fov = 45.0f * M_PI / 180.0f;
 float aspect = static_cast<float>( width ) / static_cast<float>( height );
 // Camera Rotation
-float rotationY = 0;
-float zoom = 1.0f;
+float rotationY = 0.0f;
+float zoom = 5.0f;
 
 /*
 	GLuint
@@ -258,16 +258,16 @@ void present(){
 void onKeyPress( unsigned char key, int x, int y ){
 	switch( key ){
 		case 'w':
-			zoom += 0.1f;
+			zoom -= 0.05f;
 			break;
 		case 'a':				// left
-			rotationY += 0.1f;
+			rotationY += 0.01f;
 			break;
 		case 's':
-			zoom -= 0.1f;
+			zoom += 0.05f;
 			break;
 		case 'd':				// right
-			rotationY -= 0.1f;
+			rotationY -= 0.01f;
 			break;
 	}
 

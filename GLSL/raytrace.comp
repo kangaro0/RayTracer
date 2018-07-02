@@ -38,9 +38,19 @@ struct light {
 
 const light lights[ NUM_LIGHTS ] = {
 	{
-		vec3( 0.0, 15.0, 0.0 ),
-		1.5
+		vec3( 0.0, 50.0, 0.0 ),
+		1.0
 	}
+	/*
+	{
+		vec3( 5.0, 2.0, 0.0 ),
+		0.2
+	},
+	{
+		vec3( 0.0, 2.0, 5.0 ),
+		0.3
+	}
+	*/
 };
 
 // 
@@ -75,13 +85,13 @@ struct sphere {
 const box boxes[ NUM_BOXES ] = {
 	// Floor
 	{
-		vec3( -5.0, -0.1, -5.0),
-		vec3( 5.0, 0.0, 5.0 ),
+		vec3( -50.0, -0.1, -50.0),
+		vec3( 50.0, 0.0, 50.0 ),
 		vec4( 0.247, 0.749, 0.247, 1.0 ),
 		{
 			1.0,
-			0.5,
-			0.5,
+			0.0,
+			0.0,
 			32
 		}
 	},
@@ -90,9 +100,9 @@ const box boxes[ NUM_BOXES ] = {
 		vec3( 0.5, 1.0, 0.5 ),
 		vec4( 0.749, 0.247, 0.247, 1.0 ),
 		{
-			0.5,
-			0.5,
-			0.5,
+			1.0,
+			0.3,
+			0.2,
 			32
 		}
 	}
@@ -105,8 +115,8 @@ const sphere spheres[ NUM_SPHERES ] = {
 		vec4( 0.247, 0.5, 0.749, 1.0 ),
 		{
 			1.0,
-			1.0,
-			1.0,
+			0.3,
+			0.2,
 			32
 		}
 	},
@@ -116,9 +126,9 @@ const sphere spheres[ NUM_SPHERES ] = {
 		vec4( 0.137, 0.137, 0.137, 1.0 ),
 		{
 			1.0,
-			1.0,
-			1.0,
-			32
+			0.3,
+			0.2,
+			4
 		}
 	}
 };
@@ -218,7 +228,7 @@ bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 		found = true;
 	}	
 	if( intersectSpheres( origin, dir, temp ) ){
-		if( nearest > temp.near ){
+		if( temp.near < nearest ){
 			nearest = temp.near;
 			info = temp;
 			found = true;
@@ -227,15 +237,29 @@ bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 	return found;
 }
 
-bool intersectLight( vec3 origin, vec3 dir, hitinfo info ){
-
+bool intersectLight( vec3 origin, vec3 dir, const hitinfo info ){
+	
 	hitinfo info_new;
-	if( intersectObjects( origin, dir, info ) ){
+	if( intersectObjects( origin, dir, info_new ) ){
 		
 		if( info.type == info_new.type && info.i == info_new.i )
 			return true;
 	}
 	return false;
+}
+
+float phong( light l, vec3 hit, vec3 n, float k_d, float k_s, int exp_s ){
+	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
+
+	vec3 ld = -1.0 * dir;											// Direction to light
+	vec3 r = normalize( 2 * dot( ld, n ) * n - ld );				// Direction of perfect reflection
+	vec3 v = normalize( eye - hit );								// Direction to eye
+	float norm = ( exp_s + 2.0 ) / 2 * M_PI;					// Normalisation factor for specular reflection
+
+	float i_d = k_d * l.intensity * max( 0.0, dot( ld, n ) );
+	float i_s = k_s * l.intensity * norm * pow( max( 0.0, dot( r, v ) ), exp_s );
+
+	return i_d + i_s;
 }
 
 vec4 trace( vec3 origin, vec3 dir ){
@@ -252,21 +276,21 @@ vec4 trace( vec3 origin, vec3 dir ){
 
 		// Rays
 		vec3 p = origin + info.near * dir;					// Hitpoint
-		vec3 n;					// Normale
-		vec3 r;					// Reflection
-		vec3 t;					// Refraction
+		vec3 n;												// Normale
+		vec3 r;												// Reflection
+		vec3 t;												// Refraction
 
 
 		if( info.type == enum_box ){
 
-			box b = boxes[ info .i ];
-			c = boxes[ info.i ].color;
-			k_ambient = b.mat.k_ambient;
-			k_diffuse = b.mat.k_diffuse;
-			k_specular = b.mat.k_specular;
-			exp_surface = b.mat.exp_surface;
+			box b = boxes[ info .i ];						// Object that was hit
+			c = boxes[ info.i ].color;						// Color
+			k_ambient = b.mat.k_ambient;					// Constant - Ambient
+			k_diffuse = b.mat.k_diffuse;					// Constant - Diffuse
+			k_specular = b.mat.k_specular;					// Constant - Specular
+			exp_surface = b.mat.exp_surface;				// Surface-Exponent
 
-			n = normalForBox( p, boxes[ info.i ] );
+			n = normalForBox( p, boxes[ info.i ] );			// Normal at Hitpoint
 
 		} else if( info.type == enum_sphere ){
 
@@ -277,36 +301,27 @@ vec4 trace( vec3 origin, vec3 dir ){
 			k_specular = s.mat.k_specular;
 			exp_surface = s.mat.exp_surface;
 
-			n = normalize( p - spheres[ info.i ].c );
+			n = normalize( spheres[ info.i ].c - p );
 		}
 
 		r = dir - 2 * dot( n, dir ) * n;
 		// n = ...
 
-		//
-		//	Phong
-		//
-		float norm = ( exp_surface + 2.0 ) / 2 * M_PI;
-
-		float i_in = 0.0;
-		float i_a = 0.0;
-		float i_d = 0.0;
-		float i_s = 0.0;
+		// Phong
+		float intensity = k_ambient * INTENSITY_AMBIENT;
 
 		for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
-			
+
 			light l = lights[ i ];
-			if( intersectLight( l.pos, l.pos - p, info ) ){
-				
-				i_in += lights[ i ].intensity;
-				i_a += k_ambient * INTENSITY_AMBIENT;
-				i_d = i_in * k_diffuse * dot( n, normalize( lights[ i ].pos - p ) );
-				i_s = i_in * k_specular * norm * pow( dot( r, origin ), exp_surface );
+			vec3 l_dir = normalize( p - l.pos );
+
+			if( intersectLight( l.pos, l_dir, info ) ){
+
+				intensity += phong( l, p, n, k_diffuse, k_specular, exp_surface );
 			}
 		}
 
-		float i_p = i_a + i_d + i_s;								// Final Phong
-		vec4 c_p = c;
+		vec4 c_p = c * intensity;
 
 		//	Reflection
 		//vec4 c_r = k_specular * trace( p, r );

@@ -24,10 +24,8 @@ uniform vec3 ray11;
 // Constants
 #define M_PI 3.14159265359
 
-//
 //	Parameters
-//
-vec4 background = vec4( 0.89, 0.96, 1.0, 1.0 );
+#define BACKGROUND vec4( 0.89, 0.96, 1.0, 1.0 );
 
 //
 //	Lights
@@ -128,7 +126,6 @@ const sphere spheres[ NUM_SPHERES ] = {
 //
 //	HitInfo
 //
-const uint enum_invalid = -1;
 const uint enum_box = 1;
 const uint enum_sphere = 2;
 
@@ -190,7 +187,7 @@ float intersectSphere( vec3 origin, vec3 dir, const sphere s ){
 	float d = b * b - c;
 	float t = -b - sqrt( abs( d ) );
 	if( d < 0.0 || t < 0.0 )
-		return enum_invalid;	// didn't hit
+		return -1.0;	// didn't hit
 	return t;
 }
 
@@ -230,18 +227,14 @@ bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 	return found;
 }
 
-bool intersectLight( vec3 origin, vec3 hit ){
-	vec3 dir = origin - hit;
+bool intersectLight( vec3 origin, vec3 dir, hitinfo info ){
 
-	hitinfo info;
+	hitinfo info_new;
 	if( intersectObjects( origin, dir, info ) ){
-		vec3 p = origin + info.near * dir;
-
-		bvec3 eq = equal( ivec3( hit ), ivec3( p ) );
-		if( eq.x && eq.y && eq.z )
+		
+		if( info.type == info_new.type && info.i == info_new.i )
 			return true;
 	}
-
 	return false;
 }
 
@@ -258,7 +251,7 @@ vec4 trace( vec3 origin, vec3 dir ){
 		int exp_surface;
 
 		// Rays
-		vec3 p;					// Hitpoint
+		vec3 p = origin + info.near * dir;					// Hitpoint
 		vec3 n;					// Normale
 		vec3 r;					// Reflection
 		vec3 t;					// Refraction
@@ -276,6 +269,7 @@ vec4 trace( vec3 origin, vec3 dir ){
 			n = normalForBox( p, boxes[ info.i ] );
 
 		} else if( info.type == enum_sphere ){
+
 			sphere s = spheres[ info. i ];
 			c = spheres[ info.i ].color;	
 			k_ambient = s.mat.k_ambient;
@@ -284,10 +278,8 @@ vec4 trace( vec3 origin, vec3 dir ){
 			exp_surface = s.mat.exp_surface;
 
 			n = normalize( p - spheres[ info.i ].c );
-
 		}
 
-		p = origin + info.near * dir;
 		r = dir - 2 * dot( n, dir ) * n;
 		// n = ...
 
@@ -300,9 +292,11 @@ vec4 trace( vec3 origin, vec3 dir ){
 		float i_a = 0.0;
 		float i_d = 0.0;
 		float i_s = 0.0;
+
 		for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
-			// if current object gets hit by light source
-			if( intersectLight( lights[ i ].pos, p ) ){
+			
+			light l = lights[ i ];
+			if( intersectLight( l.pos, l.pos - p, info ) ){
 				
 				i_in += lights[ i ].intensity;
 				i_a += k_ambient * INTENSITY_AMBIENT;
@@ -314,14 +308,13 @@ vec4 trace( vec3 origin, vec3 dir ){
 		float i_p = i_a + i_d + i_s;								// Final Phong
 		vec4 c_p = c;
 
-		//	Reflected
+		//	Reflection
 		//vec4 c_r = k_specular * trace( p, r );
 
 		return c_p;
 	}
 
-	// Background
-	return background;
+	return BACKGROUND;
 }
 
 layout( local_size_x = 16, local_size_y = 16 ) in;

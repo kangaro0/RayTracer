@@ -67,6 +67,8 @@ float aspect = static_cast<float>( width ) / static_cast<float>( height );
 // Camera Rotation
 float rotationY = 0.0f;
 float zoom = 10.0f;
+// Time
+float rotationT = 4.0f;
 
 /*
 	GLuint
@@ -102,7 +104,7 @@ int workGroupSizeY;
 */
 int eyeUniform;
 int ray00Uniform, ray10Uniform, ray01Uniform, ray11Uniform;
-float uTimeUniform;
+int uTimeUniform;
 
 /*
 	Other
@@ -123,9 +125,6 @@ glm::mat4 invViewProjMatrix;
 glm::vec4 cameraPosition = glm::vec4( 5.0f, 10.0f, -5.0f, 1.0f );
 glm::vec4 cameraLookAt = glm::vec4( 0.0f, 0.0f, 0.0f, 1.0f );
 glm::vec4 cameraUp = glm::vec4( 0.0f, 1.0f, 0.0f, 1.0f );
-
-// Timer
-clock_t counter;
 
 int main( int argc, char** argv ){
 
@@ -175,9 +174,6 @@ void init(){
 
 	// load quad shader
 	createQuadProgram();
-
-	// set initial timestamp
-	counter = clock();
 }
 
 void loop(){
@@ -228,8 +224,8 @@ void trace(){
 	// Bind framebuffer texture as writable in shader
 	glBindImageTexture( framebufferBinding, texture, 0, false, 0, GL_WRITE_ONLY, GL_RGBA32F );
 
-	// Set Time
-	glUniform1f( uTimeUniform, clock() - counter );
+	// Send time
+	glUniform1f( uTimeUniform, rotationT );
 
 	// Compute workgroup sizes
 	int workSizeX = nextPowerOfTwo( width );
@@ -279,6 +275,12 @@ void onKeyPress( unsigned char key, int x, int y ){
 			break;
 		case 'd':				// right
 			rotationY -= 0.01f;
+			break;
+		case 't':
+			rotationT -= 0.01f;
+			break;
+		case 'y':
+			rotationT += 0.01f;
 			break;
 	}
 
@@ -355,6 +357,7 @@ void createComputeProgram(){
 	ray10Uniform = glGetUniformLocation( cProgram, "ray10" );
 	ray01Uniform = glGetUniformLocation( cProgram, "ray01" );
 	ray11Uniform = glGetUniformLocation( cProgram, "ray11" );
+	uTimeUniform = glGetUniformLocation( cProgram, "u_time" );
 	int loc = glGetUniformLocation( cProgram, "frameBuffer" );
 	glGetUniformiv( cProgram, loc, parameters );
 	framebufferBinding = parameters[ 0 ];

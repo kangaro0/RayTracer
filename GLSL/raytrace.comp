@@ -16,7 +16,7 @@ uniform vec3 ray11;
 #define MAX_BOUNCES 3
 #define MAX_SCENE_BOUNDS 1E+10
 #define EPSILON 0.0001
-#define NUM_LIGHTS 1
+#define NUM_LIGHTS 3
 #define NUM_BOXES 4
 #define NUM_SPHERES 2
 
@@ -41,19 +41,18 @@ struct light {
 const light lights[ NUM_LIGHTS ] = {
 	// Sun
 	{
-		vec3( 0.0, 10.0, 0.0 ),
+		vec3( 0.0, sin( -u_time ) * 30, cos( -u_time ) * 30 ),
 		0.8
-	}
-	/*
+	},
 	{
-		vec3( 5.0, 2.0, 0.0 ),
+		vec3( 15.0, 12.0, 0.0 ),
+		0.2
+	},
+	{
+		vec3( 0.0, 12.0, 15.0 ),
 		0.2
 	}
-	{
-		vec3( 0.0, 2.0, 5.0 ),
-		0.3
-	}
-	*/
+	//*/
 };
 
 // 
@@ -134,7 +133,7 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
-			0.5
+			0.9
 		}
 	},
 	{
@@ -148,7 +147,7 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
-			0.1
+			0.3
 		}
 	}
 };
@@ -165,7 +164,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 				0.2,
 				16
 			},
-			0.2
+			0.9
 		}
 	},
 	{
@@ -339,6 +338,9 @@ vec3 trace( vec3 origin, vec3 dir ){
 
 	for( int b = 0 ; b < MAX_BOUNCES ; b++ ){
 
+		if( att <= 0.1 )
+			break;
+
 		hitinfo info;
 		if( intersectObjects( origin, dir, info ) ){
 			
@@ -352,7 +354,7 @@ vec3 trace( vec3 origin, vec3 dir ){
 				c = b.color;						
 				m = b.mat;	
 				ph = m.p;		
-				n = normalForBox( p, boxes[ info.i ] );			// Normal at Hitpoint
+				n = normalForBox( p, b );			// Normal at Hitpoint
 
 				p = p + EPSILON;
 
@@ -362,7 +364,7 @@ vec3 trace( vec3 origin, vec3 dir ){
 				c = s.color;	
 				m = s.mat;
 				ph = m.p;
-				n = normalize( spheres[ info.i ].c - p );
+				n = normalize( p - s.c );
 			}
 			
 			// reflection
@@ -381,17 +383,18 @@ vec3 trace( vec3 origin, vec3 dir ){
 				}
 			}
 
-			vec3 c_p = c * p_intensity;
+			vec3 c_p = c * p_intensity * att;
+			
 
 			if( b == 0 )
 				color = c_p;
 			else
-				color = color + c_p * att;
+				color = color + c_p;
 
 			// prepare for next cycle
 			origin = p;
 			dir = r;
-			att *= m.shiny;
+			att *= pow( m.shiny, 2 ) * dot( n, r );
 
 		// if we didn't hit anything -> end
 		} else {

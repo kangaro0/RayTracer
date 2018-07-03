@@ -8,6 +8,7 @@
 #include <fstream>
 #include <vector>
 #include <cmath>
+#include <ctime>
 #include <stdexcept>
 
 #include "GL\glew.h"
@@ -21,7 +22,7 @@
 #define M_PI 3.14159265358979323846264338327950288
 
 //
-// Main Functionality
+// Function declaration
 //
 
 // Initializitation
@@ -34,9 +35,9 @@ void createComputeProgram();
 void createQuadProgram();
 
 // Loop
-void loop();					// Main Loop
-void trace();					// Trace via Compute Shader
-void present();					// Render via Vertex/Fragment Shader
+void loop();					// Main loop
+void trace();					// Trace via compute shader
+void present();					// Render via vertex/fragment shader
 
 // Events
 void onKeyPress( unsigned char, int, int );
@@ -101,6 +102,7 @@ int workGroupSizeY;
 */
 int eyeUniform;
 int ray00Uniform, ray10Uniform, ray01Uniform, ray11Uniform;
+float uTimeUniform;
 
 /*
 	Other
@@ -121,6 +123,9 @@ glm::mat4 invViewProjMatrix;
 glm::vec4 cameraPosition = glm::vec4( 5.0f, 10.0f, -5.0f, 1.0f );
 glm::vec4 cameraLookAt = glm::vec4( 0.0f, 0.0f, 0.0f, 1.0f );
 glm::vec4 cameraUp = glm::vec4( 0.0f, 1.0f, 0.0f, 1.0f );
+
+// Timer
+clock_t counter;
 
 int main( int argc, char** argv ){
 
@@ -156,20 +161,23 @@ void setupRC(){
 }
 
 void init(){
-	// Create Texture / Framebuffer
+	// create texture/framebuffer
 	createTexture();
 
-	// Create Sampler
+	// create sampler
 	createSampler();
 
-	// Create VAO & VBO for rendering
+	// create VAO & VBO for rendering
 	createFullscreenQuad();
 
-	// Load Compute Shader
+	// load compute shader
 	createComputeProgram();
 
-	// Load Quad Shader
+	// load quad shader
 	createQuadProgram();
+
+	// set initial timestamp
+	counter = clock();
 }
 
 void loop(){
@@ -186,7 +194,7 @@ void trace(){
 
 	glUseProgram( cProgram );
 
-	// Change cameraPosition
+	// Change camera position
 	cameraPosition.x = static_cast<float>( sin( -rotationY ) * zoom );
 	cameraPosition.y = 2.0f;
 	cameraPosition.z = static_cast<float>( cos( -rotationY ) * zoom );
@@ -219,6 +227,9 @@ void trace(){
 
 	// Bind framebuffer texture as writable in shader
 	glBindImageTexture( framebufferBinding, texture, 0, false, 0, GL_WRITE_ONLY, GL_RGBA32F );
+
+	// Set Time
+	glUniform1f( uTimeUniform, clock() - counter );
 
 	// Compute workgroup sizes
 	int workSizeX = nextPowerOfTwo( width );

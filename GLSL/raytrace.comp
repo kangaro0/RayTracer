@@ -2,6 +2,8 @@
 
 layout( binding = 0, rgba32f ) uniform image2D frameBuffer;
 
+uniform float u_time;
+
 uniform vec3 eye;
 uniform vec3 ray00;
 uniform vec3 ray10;
@@ -11,7 +13,7 @@ uniform vec3 ray11;
 //
 //	Defines
 //
-#define RECURSION_DEPTH 5
+#define MAX_BOUNCES 3
 #define MAX_SCENE_BOUNDS 1E+10
 #define EPSILON 0.0001
 #define NUM_LIGHTS 1
@@ -19,13 +21,13 @@ uniform vec3 ray11;
 #define NUM_SPHERES 2
 
 // Lighting
-#define INTENSITY_AMBIENT 1.0;
+#define INTENSITY_AMBIENT 0.5
 
 // Constants
-#define M_PI 3.14159265359
+#define PI 3.14159265359
 
 //	Parameters
-#define BACKGROUND vec4( 0.89, 0.96, 1.0, 1.0 );
+#define BACKGROUND vec3( 0.89, 0.96, 1.0 )
 
 //
 //	Lights
@@ -37,8 +39,9 @@ struct light {
 };
 
 const light lights[ NUM_LIGHTS ] = {
+	// Sun
 	{
-		vec3( 0.0, 50.0, 0.0 ),
+		vec3( 0.0, 10.0, 0.0 ),
 		1.0
 	}
 	/*
@@ -90,9 +93,9 @@ const box boxes[ NUM_BOXES ] = {
 		vec4( 0.247, 0.749, 0.247, 1.0 ),
 		{
 			1.0,
-			0.0,
-			0.0,
-			32
+			0.5,
+			0.5,
+			1
 		}
 	},
 	{
@@ -101,9 +104,9 @@ const box boxes[ NUM_BOXES ] = {
 		vec4( 0.749, 0.247, 0.247, 1.0 ),
 		{
 			1.0,
-			0.3,
+			0.8,
 			0.2,
-			32
+			12
 		}
 	}
 };
@@ -127,8 +130,8 @@ const sphere spheres[ NUM_SPHERES ] = {
 		{
 			1.0,
 			0.3,
-			0.2,
-			4
+			0.01,
+			8
 		}
 	}
 };
@@ -144,6 +147,14 @@ struct hitinfo {
 	float near;
 	int i;
 };
+
+// Messages
+
+const uint message_box = 1;
+const uint message_sphere = 2;
+const uint message_ambient = 3;
+const uint message_diffuse = 4;
+const uint message_specular = 5;
 
 //
 //	Functions
@@ -248,88 +259,90 @@ bool intersectLight( vec3 origin, vec3 dir, const hitinfo info ){
 	return false;
 }
 
-float phong( light l, vec3 hit, vec3 n, float k_d, float k_s, int exp_s ){
+float phong( light l, vec3 hit, vec3 n, material m ){
 	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
 
 	vec3 ld = -1.0 * dir;											// Direction to light
 	vec3 r = normalize( 2 * dot( ld, n ) * n - ld );				// Direction of perfect reflection
 	vec3 v = normalize( eye - hit );								// Direction to eye
-	float norm = ( exp_s + 2.0 ) / 2 * M_PI;					// Normalisation factor for specular reflection
+	float norm = ( m.exp_surface + 2.0 ) / 2 * PI;					// Normalisation factor for specular reflection
 
-	float i_d = k_d * l.intensity * max( 0.0, dot( ld, n ) );
-	float i_s = k_s * l.intensity * norm * pow( max( 0.0, dot( r, v ) ), exp_s );
+	float i_d = m.k_diffuse * l.intensity * max( 0.0, dot( ld, n ) ); 
+	float i_s = m.k_specular * l.intensity * norm * pow( max( 0.0, dot( r, v ) ), m.exp_surface );
 
 	return i_d + i_s;
 }
 
-vec4 trace( vec3 origin, vec3 dir ){
-	float nearest = MAX_SCENE_BOUNDS;
-	hitinfo info;
+vec3 trace( vec3 origin, vec3 dir ){
+	
+	vec3 color;
 
-	if( intersectObjects( origin, dir, info ) ){
-		// Object info
-		vec4 c;
-		float k_ambient;
-		float k_diffuse;
-		float k_specular;
-		int exp_surface;
+	// Vectors
+	vec3 p;												// Hitpoint
+	vec3 n;												// Normale
+	vec3 r;												// Reflection
+	float a;											// 
+	vec3 t;												// Refraction
 
-		// Rays
-		vec3 p = origin + info.near * dir;					// Hitpoint
-		vec3 n;												// Normale
-		vec3 r;												// Reflection
-		vec3 t;												// Refraction
+	// Object info
+	vec4 c;												// Object color
+	material m;											// Material
 
+	for( int b = 0 ; b < MAX_BOUNCES ; b++ ){
 
-		if( info.type == enum_box ){
+		hitinfo info;
+		if( intersectObjects( origin, dir, info ) ){
 
-			box b = boxes[ info .i ];						// Object that was hit
-			c = boxes[ info.i ].color;						// Color
-			k_ambient = b.mat.k_ambient;					// Constant - Ambient
-			k_diffuse = b.mat.k_diffuse;					// Constant - Diffuse
-			k_specular = b.mat.k_specular;					// Constant - Specular
-			exp_surface = b.mat.exp_surface;				// Surface-Exponent
+			// get data from object
+			if( info.type == enum_box ){
 
-			n = normalForBox( p, boxes[ info.i ] );			// Normal at Hitpoint
+				box b = boxes[ info .i ];						// Object that was hit
+				c = b.color;						
+				m = b.mat;			
+				n = normalForBox( p, boxes[ info.i ] );			// Normal at Hitpoint
 
-		} else if( info.type == enum_sphere ){
+			} else if( info.type == enum_sphere ){
 
-			sphere s = spheres[ info. i ];
-			c = spheres[ info.i ].color;	
-			k_ambient = s.mat.k_ambient;
-			k_diffuse = s.mat.k_diffuse;
-			k_specular = s.mat.k_specular;
-			exp_surface = s.mat.exp_surface;
-
-			n = normalize( spheres[ info.i ].c - p );
-		}
-
-		r = dir - 2 * dot( n, dir ) * n;
-		// n = ...
-
-		// Phong
-		float intensity = k_ambient * INTENSITY_AMBIENT;
-
-		for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
-
-			light l = lights[ i ];
-			vec3 l_dir = normalize( p - l.pos );
-
-			if( intersectLight( l.pos, l_dir, info ) ){
-
-				intensity += phong( l, p, n, k_diffuse, k_specular, exp_surface );
+				sphere s = spheres[ info. i ];
+				c = s.color;	
+				m = s.mat;
+				n = normalize( spheres[ info.i ].c - p );
 			}
+			
+			// hitpoint & reflection
+			p = origin + info.near * dir;
+			r = dir - 2 * dot( n, dir ) * n;
+
+			// Phong
+			float p_intensity = m.k_ambient * INTENSITY_AMBIENT;
+			for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
+
+				light l = lights[ i ];
+				vec3 l_dir = normalize( p - l.pos );
+
+				if( intersectLight( l.pos, l_dir, info ) ){
+
+					p_intensity += phong( l, p, n, m );
+				}
+			}
+
+			vec3 c_p = color * p_intensity;
+
+			if( b == 0 )
+				color = c_p;
+			else
+				color = mix( color, c_p, 0.2 );
+
+			// prepare for next cycle
+			origin = p;
+			dir = r;
+		// if we didn't hit anything end
+		} else {
+			return mix( color, BACKGROUND, 0.2 );
 		}
-
-		vec4 c_p = c * intensity;
-
-		//	Reflection
-		//vec4 c_r = k_specular * trace( p, r );
-
-		return c_p;
 	}
 
-	return BACKGROUND;
+	return mix( color, BACKGROUND, 0.2 );
 }
 
 layout( local_size_x = 16, local_size_y = 16 ) in;
@@ -344,6 +357,6 @@ void main( void ){
 		return;
 	vec2 pos = ( vec2( pix ) + vec2( 0.5 ) ) / vec2( size );
 	vec3 dir = mix( mix( ray00, ray01, pos.y ), mix( ray10, ray11, pos.y ), pos.x );
-	vec4 color = trace( eye, normalize( dir ) );
-	imageStore( frameBuffer, pix, color );
+	vec3 color = trace( eye, normalize( dir ) );
+	imageStore( frameBuffer, pix, vec4( color, 1.0 ) );
 }

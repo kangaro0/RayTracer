@@ -38,6 +38,7 @@ void createQuadProgram();
 void loop();					// Main loop
 void trace();					// Trace via compute shader
 void present();					// Render via vertex/fragment shader
+void save();					// Save current framebuffer
 
 // Events
 void onKeyPress( unsigned char, int, int );
@@ -262,6 +263,35 @@ void present(){
 	glFlush();
 }
 
+void save(){
+	int size = width * height * 3;
+
+	std::vector<GLfloat> pixels;
+	pixels.resize( size );
+
+	glReadPixels( 0, 0, width, height, GL_RGB, GL_FLOAT, &pixels[ 0 ] );
+
+	std::ofstream fileStream;
+	fileStream.open( "image.ppm" );
+
+	// Write header
+	fileStream << "P3\n" << width << " " << height << "\n255\n";
+
+	for( int i = size - 3 ; i >= 0 ; i -= 3 ){
+
+		GLfloat r = pixels[ i ] * 255;
+		GLfloat g = pixels[ i + 1 ] * 255;
+		GLfloat b = pixels[ i + 2 ] * 255;
+
+		fileStream << r << " " << g << " " << b << "\t";
+
+		if( i % width == width - 1 )
+			fileStream << "\n";
+	}
+
+	fileStream.close();
+}
+
 void onKeyPress( unsigned char key, int x, int y ){
 	switch( key ){
 		case 'w':
@@ -282,6 +312,9 @@ void onKeyPress( unsigned char key, int x, int y ){
 		case 'y':
 			rotationT += 0.01f;
 			break;
+		case 'p':
+			save();
+			break;
 	}
 
 	glutPostRedisplay();
@@ -295,10 +328,6 @@ void onWindowResize( int w, int h ){
 
 void APIENTRY onError( GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar* message, const void* userParam ){
 	std::cout << "GL CALLBACK: " << ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR ** " : "" ) << "type = 0x" << type << ", severity = 0x" << severity << ", message = " << message << std::endl;
-}
-
-void save(){
-	
 }
 
 void createTexture(){

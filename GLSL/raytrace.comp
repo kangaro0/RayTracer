@@ -16,9 +16,9 @@ uniform vec3 ray11;
 #define MAX_BOUNCES 3
 #define MAX_SCENE_BOUNDS 1E+10
 #define EPSILON 0.0001
-#define NUM_LIGHTS 3
-#define NUM_BOXES 4
-#define NUM_SPHERES 2
+#define NUM_LIGHTS 2
+#define NUM_BOXES 7
+#define NUM_SPHERES 3
 
 // Lighting
 #define INTENSITY_AMBIENT 0.5
@@ -41,15 +41,17 @@ struct light {
 const light lights[ NUM_LIGHTS ] = {
 	// Sun
 	{
-		vec3( 0.0, sin( -u_time ) * 30, cos( -u_time ) * 30 ),
+		vec3( 0.0, sin( -u_time ) * 50, cos( -u_time ) * 50 ),
 		0.8
 	},
+	/*
 	{
 		vec3( 15.0, 12.0, 0.0 ),
 		0.2
 	},
+	*/
 	{
-		vec3( 0.0, 12.0, 15.0 ),
+		vec3( 7.5, 5.0, -4.5 ),
 		0.2
 	}
 	//*/
@@ -94,7 +96,7 @@ const box boxes[ NUM_BOXES ] = {
 	{
 		vec3( -50.0, -0.1, -50.0),
 		vec3( 50.0, 0.0, 50.0 ),
-		vec3( 0.247, 0.749, 0.247 ),
+		vec3( 0.271, 0.267, 0.349 ),
 		{
 			// Phong
 			{ 
@@ -107,7 +109,38 @@ const box boxes[ NUM_BOXES ] = {
 			0.0
 		}
 	},
-	// Box
+	// Walls
+	{
+		vec3( -5.0, 0.0, -5.0 ),
+		vec3( 7.5, 5.0, -4.9 ),
+		vec3( 0.780, 0.631, 0.478 ),
+		{
+			{
+				1.0,
+				0.5,
+				0.5,
+				1
+			},
+			0.0
+		}
+	},
+	{
+		vec3( 7.5, 0.0, -4.9 ),
+		vec3( 7.6, 5.0, 7.6 ),
+		vec3( 0.271, 0.267, 0.349 ),
+		{
+			// Phong
+			{ 
+				1.0,
+				0.5,
+				0.5,
+				1
+			},
+			// Shiny
+			0.0
+		}
+	},
+	// Boxes
 	{
 		vec3( -0.5, 0.0, -0.5),
 		vec3( 0.5, 1.0, 0.5 ),
@@ -149,6 +182,20 @@ const box boxes[ NUM_BOXES ] = {
 			},
 			0.3
 		}
+	},
+	{
+		vec3( 0.8, 0.0, -1.1 ),
+		vec3( 1.1, 0.3, -0.8 ),
+		vec3( 0.463, 0.722, 1.0 ),
+		{
+			{
+				1.0,
+				0.0,
+				0.8,
+				16
+			},
+			0.2
+		}
 	}
 };
 
@@ -168,7 +215,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 		}
 	},
 	{
-		vec3( 2.5, 1.0, 2.5 ),
+		vec3( 2.5, 1.0, 1.5 ),
 		1.0,
 		vec3( 0.137, 0.137, 0.137 ),
 		{
@@ -179,6 +226,20 @@ const sphere spheres[ NUM_SPHERES ] = {
 				8
 			},
 			0.1
+		}
+	},
+	{
+		vec3( 3.0, 0.5, -1.0 ),
+		0.5,
+		vec3( 0.447, 0.310, 0.749 ),
+		{
+			{
+				1.0,
+				0.5,
+				0.3,
+				8
+			},
+			0.3
 		}
 	}
 };
@@ -394,7 +455,7 @@ vec3 trace( vec3 origin, vec3 dir ){
 			// prepare for next cycle
 			origin = p;
 			dir = r;
-			att *= pow( m.shiny, 2 ) * dot( n, r );
+			att *= m.shiny * dot( n, r );
 
 		// if we didn't hit anything -> end
 		} else {

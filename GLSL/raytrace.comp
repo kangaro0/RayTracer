@@ -17,7 +17,7 @@ uniform vec3 ray11;
 #define MAX_SCENE_BOUNDS 1E+10
 #define EPSILON 0.0001
 #define NUM_LIGHTS 1
-#define NUM_BOXES 2
+#define NUM_BOXES 4
 #define NUM_SPHERES 2
 
 // Lighting
@@ -42,13 +42,13 @@ const light lights[ NUM_LIGHTS ] = {
 	// Sun
 	{
 		vec3( 0.0, 10.0, 0.0 ),
-		1.0
+		0.8
 	}
 	/*
 	{
 		vec3( 5.0, 2.0, 0.0 ),
 		0.2
-	},
+	}
 	{
 		vec3( 0.0, 2.0, 5.0 ),
 		0.3
@@ -60,11 +60,16 @@ const light lights[ NUM_LIGHTS ] = {
 //	Material
 //
 
-struct material {
+struct m_phong {
 	float k_ambient;
 	float k_diffuse;
 	float k_specular;
 	int exp_surface;
+};
+
+struct material {
+	m_phong p;
+	float shiny;
 };
 
 //
@@ -74,14 +79,14 @@ struct material {
 struct box {
 	vec3 min;
 	vec3 max;
-	vec4 color;
+	vec3 color;
 	material mat;
 };
 
 struct sphere {
 	vec3 c;
 	float r;
-	vec4 color;
+	vec3 color;
 	material mat;
 };
 
@@ -90,23 +95,60 @@ const box boxes[ NUM_BOXES ] = {
 	{
 		vec3( -50.0, -0.1, -50.0),
 		vec3( 50.0, 0.0, 50.0 ),
-		vec4( 0.247, 0.749, 0.247, 1.0 ),
+		vec3( 0.247, 0.749, 0.247 ),
 		{
-			1.0,
-			0.5,
-			0.5,
-			1
+			// Phong
+			{ 
+				1.0,
+				0.5,
+				0.5,
+				1
+			},
+			// Shiny
+			0.0
 		}
 	},
+	// Box
 	{
 		vec3( -0.5, 0.0, -0.5),
 		vec3( 0.5, 1.0, 0.5 ),
-		vec4( 0.749, 0.247, 0.247, 1.0 ),
+		vec3( 0.749, 0.247, 0.247 ),
 		{
-			1.0,
-			0.8,
-			0.2,
-			12
+			{
+				1.0,
+				0.8,
+				0.2,
+				12
+			},
+			0.1
+		}
+	},
+	{
+		vec3( -0.8, 0.0, -1.5 ),
+		vec3( -0.5, 0.3, -1.2 ),
+		vec3( 0.886, 0.404, 0.141 ),
+		{
+			{
+				1.0,
+				0.8,
+				0.2,
+				12
+			},
+			0.5
+		}
+	},
+	{
+		vec3( -1.5, 0.0, -0.8 ),
+		vec3( -1.2, 0.3, -0.5 ),
+		vec3( 0.886, 0.404, 0.141 ),
+		{
+			{
+				1.0,
+				0.8,
+				0.2,
+				12
+			},
+			0.1
 		}
 	}
 };
@@ -115,23 +157,29 @@ const sphere spheres[ NUM_SPHERES ] = {
 	{
 		vec3( -2.5, 2.0, -2.5 ),
 		1.5,
-		vec4( 0.247, 0.5, 0.749, 1.0 ),
+		vec3( 0.247, 0.5, 0.749 ),
 		{
-			1.0,
-			0.3,
-			0.2,
-			32
+			{
+				1.0,
+				0.3,
+				0.2,
+				16
+			},
+			0.2
 		}
 	},
 	{
 		vec3( 2.5, 1.0, 2.5 ),
 		1.0,
-		vec4( 0.137, 0.137, 0.137, 1.0 ),
+		vec3( 0.137, 0.137, 0.137 ),
 		{
-			1.0,
-			0.3,
-			0.01,
-			8
+			{
+				1.0,
+				0.3,
+				0.1,
+				8
+			},
+			0.1
 		}
 	}
 };
@@ -259,16 +307,16 @@ bool intersectLight( vec3 origin, vec3 dir, const hitinfo info ){
 	return false;
 }
 
-float phong( light l, vec3 hit, vec3 n, material m ){
+float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
 
 	vec3 ld = -1.0 * dir;											// Direction to light
 	vec3 r = normalize( 2 * dot( ld, n ) * n - ld );				// Direction of perfect reflection
 	vec3 v = normalize( eye - hit );								// Direction to eye
-	float norm = ( m.exp_surface + 2.0 ) / 2 * PI;					// Normalisation factor for specular reflection
+	float norm = ( p.exp_surface + 2.0 ) / 2 * PI;					// Normalisation factor for specular reflection
 
-	float i_d = m.k_diffuse * l.intensity * max( 0.0, dot( ld, n ) ); 
-	float i_s = m.k_specular * l.intensity * norm * pow( max( 0.0, dot( r, v ) ), m.exp_surface );
+	float i_d = p.k_diffuse * l.intensity * max( 0.0, dot( ld, n ) ); 
+	float i_s = p.k_specular * l.intensity * norm * pow( max( 0.0, dot( r, v ) ), p.exp_surface );
 
 	return i_d + i_s;
 }
@@ -276,45 +324,52 @@ float phong( light l, vec3 hit, vec3 n, material m ){
 vec3 trace( vec3 origin, vec3 dir ){
 	
 	vec3 color;
+	float att = 1.0;
 
 	// Vectors
 	vec3 p;												// Hitpoint
 	vec3 n;												// Normale
 	vec3 r;												// Reflection
-	float a;											// 
 	vec3 t;												// Refraction
 
 	// Object info
-	vec4 c;												// Object color
+	vec3 c;												// Object color
 	material m;											// Material
+	m_phong ph;
 
 	for( int b = 0 ; b < MAX_BOUNCES ; b++ ){
 
 		hitinfo info;
 		if( intersectObjects( origin, dir, info ) ){
+			
+			// hitpoint
+			p = origin + info.near * dir;
 
 			// get data from object
 			if( info.type == enum_box ){
 
 				box b = boxes[ info .i ];						// Object that was hit
 				c = b.color;						
-				m = b.mat;			
+				m = b.mat;	
+				ph = m.p;		
 				n = normalForBox( p, boxes[ info.i ] );			// Normal at Hitpoint
+
+				p = p + EPSILON;
 
 			} else if( info.type == enum_sphere ){
 
 				sphere s = spheres[ info. i ];
 				c = s.color;	
 				m = s.mat;
+				ph = m.p;
 				n = normalize( spheres[ info.i ].c - p );
 			}
 			
-			// hitpoint & reflection
-			p = origin + info.near * dir;
+			// reflection
 			r = dir - 2 * dot( n, dir ) * n;
 
 			// Phong
-			float p_intensity = m.k_ambient * INTENSITY_AMBIENT;
+			float p_intensity = ph.k_ambient * INTENSITY_AMBIENT;
 			for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
 
 				light l = lights[ i ];
@@ -322,27 +377,31 @@ vec3 trace( vec3 origin, vec3 dir ){
 
 				if( intersectLight( l.pos, l_dir, info ) ){
 
-					p_intensity += phong( l, p, n, m );
+					p_intensity += phong( l, p, n, ph );
 				}
 			}
 
-			vec3 c_p = color * p_intensity;
+			vec3 c_p = c * p_intensity;
 
 			if( b == 0 )
 				color = c_p;
 			else
-				color = mix( color, c_p, 0.2 );
+				color = color + c_p * att;
 
 			// prepare for next cycle
 			origin = p;
 			dir = r;
-		// if we didn't hit anything end
+			att *= m.shiny;
+
+		// if we didn't hit anything -> end
 		} else {
-			return mix( color, BACKGROUND, 0.2 );
+			if( b == 0 )
+				return BACKGROUND;
+			return color + BACKGROUND * att;
 		}
 	}
 
-	return mix( color, BACKGROUND, 0.2 );
+	return color;
 }
 
 layout( local_size_x = 16, local_size_y = 16 ) in;

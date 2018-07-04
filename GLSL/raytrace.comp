@@ -455,7 +455,8 @@ vec3 trace( vec3 origin, vec3 dir ){
 			// prepare for next cycle
 			origin = p;
 			dir = r;
-			att *= m.shiny * dot( n, r );
+			att *= m.shiny * dot( dir, n );
+			//att *= dot( r, normalize( eye - p ) );
 
 		// if we didn't hit anything -> end
 		} else {

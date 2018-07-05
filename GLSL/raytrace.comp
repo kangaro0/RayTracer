@@ -21,13 +21,13 @@ uniform vec3 ray11;
 #define NUM_SPHERES 3
 
 // Lighting
-#define INTENSITY_AMBIENT 0.5
+#define INTENSITY_AMBIENT 1.0
 
 // Constants
 #define PI 3.14159265359
 
 //	Parameters
-#define BACKGROUND vec3( 0.89, 0.96, 1.0 )
+#define BACKGROUND vec4( 0.89, 0.96, 1.0, 1.0 )
 
 //
 //	Lights
@@ -70,7 +70,8 @@ struct m_phong {
 
 struct material {
 	m_phong p;
-	float shiny;
+	float reflection;
+	float refraction;
 };
 
 //
@@ -105,8 +106,8 @@ const box boxes[ NUM_BOXES ] = {
 				0.5,
 				1
 			},
-			// Shiny
-			0.0
+			0.0,	// Reflection
+			0.0		// Refraction
 		}
 	},
 	// Walls
@@ -121,6 +122,7 @@ const box boxes[ NUM_BOXES ] = {
 				0.5,
 				1
 			},
+			0.0,
 			0.0
 		}
 	},
@@ -129,14 +131,13 @@ const box boxes[ NUM_BOXES ] = {
 		vec3( 7.6, 5.0, 7.6 ),
 		vec3( 0.271, 0.267, 0.349 ),
 		{
-			// Phong
 			{ 
 				1.0,
 				0.5,
 				0.5,
 				1
 			},
-			// Shiny
+			0.0,
 			0.0
 		}
 	},
@@ -145,14 +146,15 @@ const box boxes[ NUM_BOXES ] = {
 		vec3( -0.5, 0.0, -0.5),
 		vec3( 0.5, 1.0, 0.5 ),
 		vec3( 0.749, 0.247, 0.247 ),
-		{
+		{	
 			{
 				1.0,
 				0.8,
 				0.2,
 				12
 			},
-			0.1
+			0.1,
+			0.0
 		}
 	},
 	{
@@ -166,7 +168,8 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
-			0.9
+			0.9,
+			0.0
 		}
 	},
 	{
@@ -180,7 +183,8 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
-			0.3
+			0.3,
+			0.0
 		}
 	},
 	{
@@ -194,7 +198,8 @@ const box boxes[ NUM_BOXES ] = {
 				0.8,
 				16
 			},
-			0.2
+			0.2,
+			0.0
 		}
 	}
 };
@@ -211,7 +216,8 @@ const sphere spheres[ NUM_SPHERES ] = {
 				0.2,
 				16
 			},
-			0.9
+			0.9,
+			0.0
 		}
 	},
 	{
@@ -225,7 +231,8 @@ const sphere spheres[ NUM_SPHERES ] = {
 				0.1,
 				8
 			},
-			0.1
+			0.1,
+			0.0
 		}
 	},
 	{
@@ -239,7 +246,8 @@ const sphere spheres[ NUM_SPHERES ] = {
 				0.3,
 				8
 			},
-			0.3
+			0.3,
+			0.0
 		}
 	}
 };
@@ -256,13 +264,12 @@ struct hitinfo {
 	int i;
 };
 
-// Messages
-
-const uint message_box = 1;
-const uint message_sphere = 2;
-const uint message_ambient = 3;
-const uint message_diffuse = 4;
-const uint message_specular = 5;
+//
+// States
+//
+const uint state_invalid = 0;
+const uint state_reflection = 1;
+const uint state_refraction = 2;
 
 //
 //	Functions
@@ -381,10 +388,15 @@ float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	return i_d + i_s;
 }
 
-vec3 trace( vec3 origin, vec3 dir ){
+vec4 trace( vec3 origin, vec3 dir ){
 	
-	vec3 color;
+	// Color
+	vec3 color = vec3(1.0);
+	float p_intensity = 0.0;
 	float att = 1.0;
+
+	// State
+	uint state = state_reflection;
 
 	// Vectors
 	vec3 p;												// Hitpoint
@@ -429,20 +441,23 @@ vec3 trace( vec3 origin, vec3 dir ){
 			}
 			
 			// reflection
-			r = dir - 2 * dot( n, dir ) * n;
+			r = normalize( dir - 2 * dot( n, dir ) * n );
 
 			// Phong
-			float p_intensity = ph.k_ambient * INTENSITY_AMBIENT;
+			p_intensity = ph.k_ambient * INTENSITY_AMBIENT;
 			for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
 
 				light l = lights[ i ];
 				vec3 l_dir = normalize( p - l.pos );
 
+				// object gets hit by light ray
 				if( intersectLight( l.pos, l_dir, info ) ){
 
 					p_intensity += phong( l, p, n, ph );
 				}
 			}
+
+			p_intensity /= float( NUM_LIGHTS ) / 2.0;
 
 			vec3 c_p = c * p_intensity * att;
 			
@@ -450,22 +465,40 @@ vec3 trace( vec3 origin, vec3 dir ){
 			if( b == 0 )
 				color = c_p;
 			else
-				color = color + c_p;
-
-			// prepare for next cycle
-			origin = p;
-			dir = r;
-			att *= m.shiny * dot( n, r );
+				color = color + c_p;	
 
 		// if we didn't hit anything -> end
 		} else {
+			
 			if( b == 0 )
-				return BACKGROUND;
-			return color + BACKGROUND * att;
+				color = vec3( BACKGROUND );
+			else
+				color = color + vec3( BACKGROUND );
+			break;
+
+		}
+
+		// prepare for next cycle
+		origin = p;
+		if( state == state_reflection ){
+
+			dir = r;
+			att *= m.reflection * dot( n, r );
+
+			if( b + 1 == MAX_BOUNCES && m.refraction > 0.0 ){
+				state = state_refraction;
+				b = 0;
+			}
+
+		} else if( state == state_refraction ) {
+				
+			break;
+		} else {
+			break;
 		}
 	}
 
-	return color;
+	return vec4( color, 1.0 * p_intensity );
 }
 
 layout( local_size_x = 16, local_size_y = 16 ) in;
@@ -480,6 +513,6 @@ void main( void ){
 		return;
 	vec2 pos = ( vec2( pix ) + vec2( 0.5 ) ) / vec2( size );
 	vec3 dir = mix( mix( ray00, ray01, pos.y ), mix( ray10, ray11, pos.y ), pos.x );
-	vec3 color = trace( eye, normalize( dir ) );
-	imageStore( frameBuffer, pix, vec4( color, 1.0 ) );
+	vec4 color = trace( eye, normalize( dir ) );
+	imageStore( frameBuffer, pix, color );
 }

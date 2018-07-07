@@ -476,11 +476,11 @@ vec4 trace( vec3 origin, vec3 dir ){
 				c = s.color;	
 				m = s.mat;
 				n = normalize( p - s.c );
-				
+
 				if( ray_inside )
-					p += EPSILON;
+					p += n * EPSILON;
 				else
-					p -= EPSILON;
+					p -= n * EPSILON;
 			}
 
 			// calculate reflection & refraction

@@ -21,7 +21,7 @@ uniform vec3 ray11;
 #define NUM_SPHERES 3
 
 // Lighting
-#define INTENSITY_AMBIENT 1.0
+#define INTENSITY_AMBIENT 0.8
 
 // Constants
 #define PI 3.14159265359
@@ -70,8 +70,9 @@ struct m_phong {
 
 struct material {
 	m_phong p;
-	float reflection;
-	float refraction;
+	float i_reflection;
+	float i_refraction;
+	float c_medium;
 };
 
 //
@@ -107,7 +108,8 @@ const box boxes[ NUM_BOXES ] = {
 				1
 			},
 			0.0,	// Reflection
-			0.0		// Refraction
+			0.0,	// Refraction
+			0.0		
 		}
 	},
 	// Walls
@@ -122,6 +124,7 @@ const box boxes[ NUM_BOXES ] = {
 				0.5,
 				1
 			},
+			0.0,
 			0.0,
 			0.0
 		}
@@ -138,6 +141,7 @@ const box boxes[ NUM_BOXES ] = {
 				1
 			},
 			0.0,
+			0.0,
 			0.0
 		}
 	},
@@ -153,8 +157,9 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
-			0.1,
-			0.0
+			0.0,
+			1.0,
+			1.5
 		}
 	},
 	{
@@ -169,6 +174,7 @@ const box boxes[ NUM_BOXES ] = {
 				12
 			},
 			0.9,
+			0.0,
 			0.0
 		}
 	},
@@ -184,6 +190,7 @@ const box boxes[ NUM_BOXES ] = {
 				12
 			},
 			0.3,
+			0.0,
 			0.0
 		}
 	},
@@ -199,6 +206,7 @@ const box boxes[ NUM_BOXES ] = {
 				16
 			},
 			0.2,
+			0.0,
 			0.0
 		}
 	}
@@ -216,8 +224,9 @@ const sphere spheres[ NUM_SPHERES ] = {
 				0.2,
 				16
 			},
+			0.0,
 			0.9,
-			0.0
+			1.5
 		}
 	},
 	{
@@ -232,6 +241,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 				8
 			},
 			0.1,
+			0.0,
 			0.0
 		}
 	},
@@ -246,7 +256,8 @@ const sphere spheres[ NUM_SPHERES ] = {
 				0.3,
 				8
 			},
-			0.3,
+			1.0,
+			0.0,
 			0.0
 		}
 	}
@@ -263,13 +274,6 @@ struct hitinfo {
 	float near;
 	int i;
 };
-
-//
-// States
-//
-const uint state_invalid = 0;
-const uint state_reflection = 1;
-const uint state_refraction = 2;
 
 //
 //	Functions
@@ -374,10 +378,44 @@ bool intersectLight( vec3 origin, vec3 dir, const hitinfo info ){
 	return false;
 }
 
+void swap( out float a, out float b ){
+	float t = a;
+	a = b;
+	b = t;
+}
+
+vec3 reflect( vec3 v_in, vec3 n ){
+	return normalize( v_in - 2 * dot( n, v_in ) * n );
+}
+
+///*
+vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
+	float cos_ai = dot( v_in, n );
+	float angle_in = acos( cos_ai );
+	float sin_ai = sin( angle_in );
+	float ratio = c_old / c_new;
+	return ratio * ( v_in + cos_ai * n ) - n * sqrt( 1 - pow( ratio, 2 ) * pow( sin_ai, 2 ) );
+}
+//*/
+/*
+vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
+	float cosi = clamp( -1.0, 1.0, dot( v_in, n ) );
+	
+	if( cosi < 0 )
+		cosi = -1.0 * cosi;
+	else {
+		swap( c_old, c_new );
+		n = -1.0 * n;
+	}
+	float eta = c_old / c_new;
+	float k = 1 - eta * eta * ( 1 - cosi * cosi );
+	return k < 0 ? vec3(0.0) : eta * v_in + ( eta * cosi - sqrt( k ) ) * n;
+}
+//*/
+
 float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
-
-	vec3 ld = -1.0 * dir;											// Direction to light
+	vec3 ld = -1.0 * dir;											// Direction of hitpoint to light
 	vec3 r = normalize( 2 * dot( ld, n ) * n - ld );				// Direction of perfect reflection
 	vec3 v = normalize( eye - hit );								// Direction to eye
 	float norm = ( p.exp_surface + 2.0 ) / 2 * PI;					// Normalisation factor for specular reflection
@@ -395,8 +433,11 @@ vec4 trace( vec3 origin, vec3 dir ){
 	float p_intensity = 0.0;
 	float att = 1.0;
 
+	// Medium
+	float c_medium = 1.0;
+
 	// State
-	uint state = state_reflection;
+	bool ray_inside = false;
 
 	// Vectors
 	vec3 p;												// Hitpoint
@@ -404,10 +445,9 @@ vec4 trace( vec3 origin, vec3 dir ){
 	vec3 r;												// Reflection
 	vec3 t;												// Refraction
 
-	// Object info
+	// Current Object info
 	vec3 c;												// Object color
 	material m;											// Material
-	m_phong ph;
 
 	for( int b = 0 ; b < MAX_BOUNCES ; b++ ){
 
@@ -425,26 +465,30 @@ vec4 trace( vec3 origin, vec3 dir ){
 
 				box b = boxes[ info .i ];						// Object that was hit
 				c = b.color;						
-				m = b.mat;	
-				ph = m.p;		
-				n = normalForBox( p, b );			// Normal at Hitpoint
-
-				p = p + EPSILON;
+				m = b.mat;			
+				n = normalForBox( p, b );						// Normal at Hitpoint
+				p += EPSILON;									// Distortion fix
+				
 
 			} else if( info.type == enum_sphere ){
 
 				sphere s = spheres[ info. i ];
 				c = s.color;	
 				m = s.mat;
-				ph = m.p;
 				n = normalize( p - s.c );
+				
+				if( ray_inside )
+					p += EPSILON;
+				else
+					p -= EPSILON;
 			}
-			
-			// reflection
-			r = normalize( dir - 2 * dot( n, dir ) * n );
+
+			// calculate reflection & refraction
+			r = reflect( dir, n );
+			t = refract( dir, n, c_medium, ray_inside ? 1.0 : m.c_medium );
 
 			// Phong
-			p_intensity = ph.k_ambient * INTENSITY_AMBIENT;
+			p_intensity = m.p.k_ambient * INTENSITY_AMBIENT;
 			for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
 
 				light l = lights[ i ];
@@ -453,46 +497,45 @@ vec4 trace( vec3 origin, vec3 dir ){
 				// object gets hit by light ray
 				if( intersectLight( l.pos, l_dir, info ) ){
 
-					p_intensity += phong( l, p, n, ph );
+					p_intensity += phong( l, p, n, m.p );
 				}
 			}
 
-			p_intensity /= float( NUM_LIGHTS ) / 2.0;
-
-			vec3 c_p = c * p_intensity * att;
+			p_intensity *= float( NUM_LIGHTS ) / 2.0;
 			
+			vec3 c_p = c * p_intensity;
 
-			if( b == 0 )
-				color = c_p;
-			else
-				color = color + c_p;	
+			color = ( b == 0 ? c_p : color + c_p * att );
 
-		// if we didn't hit anything -> end
 		} else {
 			
-			if( b == 0 )
-				color = vec3( BACKGROUND );
-			else
-				color = color + vec3( BACKGROUND );
+			color = ( b == 0 ? vec3( BACKGROUND ) : color + vec3( BACKGROUND ) );
 			break;
-
 		}
 
 		// prepare for next cycle
 		origin = p;
-		if( state == state_reflection ){
+		if( m.i_reflection > 0.0 ){
 
 			dir = r;
-			att *= m.reflection * dot( n, r );
+			att *= m.i_reflection * dot( dir, n );
 
-			if( b + 1 == MAX_BOUNCES && m.refraction > 0.0 ){
-				state = state_refraction;
-				b = 0;
+		} else if( m.i_refraction > 0.0 ) {
+			
+			// total internal reflection
+			if( t == vec3(0.0) ){
+				dir = r;
+				
+			} else {
+				dir = normalize( t );
+
+				c_medium = ray_inside ? 1.0 : m.c_medium;
+
+				ray_inside = !ray_inside;	
 			}
 
-		} else if( state == state_refraction ) {
-				
-			break;
+			att *= m.i_refraction;
+
 		} else {
 			break;
 		}

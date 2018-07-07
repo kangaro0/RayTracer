@@ -295,22 +295,22 @@ void save(){
 void onKeyPress( unsigned char key, int x, int y ){
 	switch( key ){
 		case 'w':
-			zoom -= 0.05f;
+			zoom -= 0.1f;
 			break;
 		case 'a':				// left
-			rotationY += 0.01f;
+			rotationY += 0.04f;
 			break;
 		case 's':
-			zoom += 0.05f;
+			zoom += 0.1f;
 			break;
 		case 'd':				// right
-			rotationY -= 0.01f;
+			rotationY -= 0.04f;
 			break;
 		case 't':
-			rotationT -= 0.01f;
+			rotationT -= 0.04f;
 			break;
 		case 'y':
-			rotationT += 0.01f;
+			rotationT += 0.04f;
 			break;
 		case 'p':
 			save();

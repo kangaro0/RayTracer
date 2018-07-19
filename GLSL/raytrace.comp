@@ -13,15 +13,15 @@ uniform vec3 ray11;
 //
 //	Defines
 //
-#define MAX_BOUNCES 4
+#define MAX_BOUNCES 5
 #define MAX_SCENE_BOUNDS 1E+10
-#define EPSILON 0.0001
-#define NUM_LIGHTS 2
+#define EPSILON 0.00001
+#define NUM_LIGHTS 1
 #define NUM_BOXES 7
-#define NUM_SPHERES 3
+#define NUM_SPHERES 4
 
 // Lighting
-#define INTENSITY_AMBIENT 0.8
+#define INTENSITY_AMBIENT 0.9
 
 // Constants
 #define PI 3.14159265359
@@ -43,16 +43,15 @@ const light lights[ NUM_LIGHTS ] = {
 	{
 		vec3( 0.0, sin( -u_time ) * 50, cos( -u_time ) * 50 ),
 		0.8
-	},
+	}
 	/*
 	{
 		vec3( 15.0, 12.0, 0.0 ),
-		0.2
+		0.1
 	},
-	*/
 	{
 		vec3( 7.5, 5.0, -4.5 ),
-		0.2
+		0.1
 	}
 	//*/
 };
@@ -94,6 +93,41 @@ struct sphere {
 };
 
 const box boxes[ NUM_BOXES ] = {
+	/*
+	{
+		vec3( -50.0, -5.1, -50.0),
+		vec3( 50.0, -5.0, 50.0 ),
+		vec3( 0.271, 0.267, 0.349 ),
+		{
+			// Phong
+			{ 
+				1.0,
+				0.5,
+				0.5,
+				1
+			},
+			0.0,	// Reflection
+			0.0,	// Refraction
+			0.0		
+		}
+	},
+	{
+		vec3( -1.25, -1.25, 0.0 ),
+		vec3( 1.25, 1.25, 2.5 ),
+		vec3( 0.914, 0.255, 0.157 ),
+		{
+			{
+				1.0,
+				0.5,
+				0.8,
+				32
+			},
+			0.0,
+			0.8,
+			1.3
+		}
+	}
+	*/
 	// Floor
 	{
 		vec3( -50.0, -0.1, -50.0),
@@ -158,7 +192,7 @@ const box boxes[ NUM_BOXES ] = {
 				12
 			},
 			0.0,
-			0.0,
+			0.5,
 			1.5
 		}
 	},
@@ -213,6 +247,88 @@ const box boxes[ NUM_BOXES ] = {
 };
 
 const sphere spheres[ NUM_SPHERES ] = {
+	/*
+	{
+		vec3( -1.5, 1.5, -1.5 ),
+		0.5,
+		vec3( 0.447, 0.310, 0.749 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.3,
+				16
+			},
+			0.0,
+			0.8,
+			1.5
+		}
+	},
+	{
+		vec3( 1.5, 1.5, -1.5 ),
+		1.5,
+		vec3( 0.247, 0.384, 0.561 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.3,
+				16
+			},
+			0.8,
+			0.0,
+			1.5
+		}
+	},
+	{
+		vec3( 1.5, -1.5, -1.5 ),
+		1.5,
+		vec3( 0.271, 0.537, 0.333 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.3,
+				16
+			},
+			0.8,
+			0.0,
+			1.5
+		}
+	},
+	{
+		vec3( -1.5, -1.5, -1.5 ),
+		1.5,
+		vec3( 0.945, 0.510, 0.161 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.3,
+				16
+			},
+			0.8,
+			0.0,
+			1.5
+		}
+	}
+	*/
+	{
+		vec3( 2.5, 1.5, -3.5 ),
+		0.5,
+		vec3( 0.0, 0.698, 0.2 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.2,
+				8
+			},
+			0.0,
+			0.9,
+			1.5
+		}
+	},
 	{
 		vec3( -2.5, 2.0, -2.5 ),
 		1.5,
@@ -223,10 +339,10 @@ const sphere spheres[ NUM_SPHERES ] = {
 				1.0,
 				0.3,
 				0.2,
-				16
+				32
 			},
+			1.0,
 			0.0,
-			0.9,
 			1.5
 		}
 	},
@@ -413,6 +529,18 @@ vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
 	return k < 0 ? vec3(0.0) : eta * v_in + ( eta * cosi - sqrt( k ) ) * n;
 }
 //*/
+/*
+vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
+	vec3 a = dot( n, v_in ) * n;
+	vec3 b = v_in - a;
+
+	float beta = c_old / c_new;
+	float alpha = sqrt( 1 + ( 1 - pow( beta, 2 ) ) * ( pow( length( b ), 2 ) / pow( length( a ), 2 ) ) );
+
+	vec3 t = alpha * a + beta * b;
+	return t;
+}
+*/
 
 float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
@@ -468,7 +596,6 @@ vec4 trace( vec3 origin, vec3 dir ){
 				c = b.color;						
 				m = b.mat;			
 				n = normalForBox( p, b );						// Normal at Hitpoint
-				p += EPSILON;									// Distortion fix
 				
 
 			} else if( info.type == enum_sphere ){
@@ -477,12 +604,12 @@ vec4 trace( vec3 origin, vec3 dir ){
 				c = s.color;	
 				m = s.mat;
 				n = normalize( p - s.c );
-
-				if( ray_inside )
-					p -= n * EPSILON;
-				else
-					p += n * EPSILON;
 			}
+
+			if( ray_inside )
+					p -= n * EPSILON;
+			else
+				p += n * EPSILON;
 
 			// calculate reflection & refraction
 			r = reflect( dir, n );
@@ -525,7 +652,7 @@ vec4 trace( vec3 origin, vec3 dir ){
 			
 			// total internal reflection
 			if( t == vec3(0.0) ){
-				dir = r;
+				dir = normalize( r );
 				
 			} else {
 				dir = normalize( t );

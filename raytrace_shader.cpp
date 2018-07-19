@@ -193,7 +193,7 @@ void trace(){
 
 	// Change camera position
 	cameraPosition.x = static_cast<float>( sin( -rotationY ) * zoom );
-	cameraPosition.y = 2.5f;
+	cameraPosition.y = 3.5f;
 	cameraPosition.z = static_cast<float>( cos( -rotationY ) * zoom );
 
 	viewMatrix = glm::lookAt( cameraPosition.xyz(), cameraLookAt.xyz(), cameraUp.xyz() );

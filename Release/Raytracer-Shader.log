@@ -5,5 +5,5 @@ raytrace_shader.cpp(66): warning C4305: "Initialisierung": Verkürzung von "doub
     0 functions were new in current compilation
     1 functions had inline decision re-evaluated but remain unchanged
   Codegenerierung ist abgeschlossen.
-  Raytracer-Shader.vcxproj -> D:\Vertiefung\RayTracer\Release\raytrace_shader.exe
-  Raytracer-Shader.vcxproj -> D:\Vertiefung\RayTracer\Release\raytrace_shader.pdb (Full PDB)
+  Raytracer-Shader.vcxproj -> C:\Users\kanga\Desktop\Vertiefung\RayTracer\Release\raytrace_shader.exe
+  Raytracer-Shader.vcxproj -> C:\Users\kanga\Desktop\Vertiefung\RayTracer\Release\raytrace_shader.pdb (Full PDB)

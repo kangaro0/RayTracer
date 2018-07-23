@@ -13,21 +13,22 @@ uniform vec3 ray11;
 //
 //	Defines
 //
-#define MAX_BOUNCES 5
+#define MAX_BOUNCES 10
 #define MAX_SCENE_BOUNDS 1E+10
-#define EPSILON 0.00001
-#define NUM_LIGHTS 1
-#define NUM_BOXES 7
-#define NUM_SPHERES 4
+#define EPSILON 0.00005
+#define NUM_LIGHTS 3
+#define NUM_BOXES 5
+#define NUM_SPHERES 6
 
 // Lighting
-#define INTENSITY_AMBIENT 0.9
+#define INTENSITY_AMBIENT 0.5
 
 // Constants
 #define PI 3.14159265359
 
 //	Parameters
 #define BACKGROUND vec4( 0.89, 0.96, 1.0, 1.0 )
+//#define BACKGROUND vec4( 0.0, 0.0, 0.0, 1.0 )
 
 //
 //	Lights
@@ -42,16 +43,15 @@ const light lights[ NUM_LIGHTS ] = {
 	// Sun
 	{
 		vec3( 0.0, sin( -u_time ) * 50, cos( -u_time ) * 50 ),
-		0.8
-	}
-	/*
+		0.7
+	},
 	{
 		vec3( 15.0, 12.0, 0.0 ),
-		0.1
+		0.01
 	},
 	{
 		vec3( 7.5, 5.0, -4.5 ),
-		0.1
+		0.01
 	}
 	//*/
 };
@@ -147,6 +147,7 @@ const box boxes[ NUM_BOXES ] = {
 		}
 	},
 	// Walls
+	/*
 	{
 		vec3( -5.0, 0.0, -5.0 ),
 		vec3( 7.5, 5.0, -4.9 ),
@@ -179,6 +180,7 @@ const box boxes[ NUM_BOXES ] = {
 			0.0
 		}
 	},
+	//*/
 	// Boxes
 	{
 		vec3( -0.5, 0.0, -0.5),
@@ -191,8 +193,8 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
+			0.25,
 			0.0,
-			0.5,
 			1.5
 		}
 	},
@@ -316,7 +318,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 	{
 		vec3( 2.5, 1.5, -3.5 ),
 		0.5,
-		vec3( 0.0, 0.698, 0.2 ),
+		vec3( 1.0, 0.325, 0.051 ),
 		{
 			{
 				1.0,
@@ -325,7 +327,24 @@ const sphere spheres[ NUM_SPHERES ] = {
 				8
 			},
 			0.0,
-			0.9,
+			0.8,
+			1.9
+		}
+	},
+	// Brechung
+	{
+		vec3( 3.75, 2.0, -0.5 ),
+		0.5,
+		vec3( 1.0, 0.325, 0.051 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.2,
+				8
+			},
+			0.0,
+			0.5,
 			1.5
 		}
 	},
@@ -346,6 +365,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 			1.5
 		}
 	},
+	// Diffsion
 	{
 		vec3( 2.5, 1.0, 1.5 ),
 		1.0,
@@ -362,9 +382,26 @@ const sphere spheres[ NUM_SPHERES ] = {
 			0.0
 		}
 	},
+	// Spiegelung
 	{
 		vec3( 3.0, 0.5, -1.0 ),
 		0.5,
+		vec3( 0.447, 0.310, 0.749 ),
+		{
+			{
+				1.0,
+				0.5,
+				0.3,
+				8
+			},
+			1.0,
+			0.0,
+			0.0
+		}
+	},
+	{
+		vec3( -3.0, 2.5, 5.0 ),
+		2.5,
 		vec3( 0.447, 0.310, 0.749 ),
 		{
 			{
@@ -540,11 +577,11 @@ vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
 	vec3 t = alpha * a + beta * b;
 	return t;
 }
-*/
+//*/
 
 float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
-	vec3 ld = -1.0 * dir;											// Direction of hitpoint to light
+	vec3 ld = normalize( l.pos - hit );								// Direction of hitpoint to light
 	vec3 r = normalize( 2 * dot( ld, n ) * n - ld );				// Direction of perfect reflection
 	vec3 v = normalize( eye - hit );								// Direction to eye
 	float norm = ( p.exp_surface + 2.0 ) / 2 * PI;					// Normalisation factor for specular reflection
@@ -613,7 +650,7 @@ vec4 trace( vec3 origin, vec3 dir ){
 
 			// calculate reflection & refraction
 			r = reflect( dir, n );
-			t = refract( dir, n, c_medium, ray_inside ? 1.0 : m.c_medium );
+			t = refract( dir, n, c_medium, ray_inside ? m.c_medium : 1.0 );
 
 			// Phong
 			p_intensity = m.p.k_ambient * INTENSITY_AMBIENT;
@@ -651,9 +688,9 @@ vec4 trace( vec3 origin, vec3 dir ){
 		} else if( m.i_refraction > 0.0 ) {
 			
 			// total internal reflection
-			if( t == vec3(0.0) ){
+			bvec3 eq = equal( t, vec3( 0.0 ) );
+			if( eq.x && eq.y && eq.z ){
 				dir = normalize( r );
-				
 			} else {
 				dir = normalize( t );
 				c_medium = ray_inside ? 1.0 : m.c_medium;

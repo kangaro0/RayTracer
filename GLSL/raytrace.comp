@@ -46,12 +46,12 @@ const light lights[ NUM_LIGHTS ] = {
 		0.7
 	},
 	{
-		vec3( 15.0, 12.0, 0.0 ),
-		0.01
+		vec3( 10.0, 15.0, 5.0 ),
+		0.5
 	},
 	{
-		vec3( 7.5, 5.0, -4.5 ),
-		0.01
+		vec3( -7.5, 5.0, -4.5 ),
+		0.2
 	}
 	//*/
 };
@@ -193,8 +193,8 @@ const box boxes[ NUM_BOXES ] = {
 				0.2,
 				12
 			},
-			0.25,
 			0.0,
+			0.5,
 			1.5
 		}
 	},
@@ -315,6 +315,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 		}
 	}
 	*/
+	// Brechung
 	{
 		vec3( 2.5, 1.5, -3.5 ),
 		0.5,
@@ -331,55 +332,20 @@ const sphere spheres[ NUM_SPHERES ] = {
 			1.9
 		}
 	},
-	// Brechung
 	{
-		vec3( 3.75, 2.0, -0.5 ),
-		0.5,
+		vec3( 0.25, 1.0, 2.0 ),
+		0.75,
 		vec3( 1.0, 0.325, 0.051 ),
 		{
 			{
 				1.0,
 				0.3,
 				0.2,
-				8
+				4
 			},
 			0.0,
 			0.5,
 			1.5
-		}
-	},
-	{
-		vec3( -2.5, 2.0, -2.5 ),
-		1.5,
-		//vec3( 0.247, 0.5, 0.749 ),
-		vec3( 0.01, 0.01, 0.01 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.2,
-				32
-			},
-			1.0,
-			0.0,
-			1.5
-		}
-	},
-	// Diffsion
-	{
-		vec3( 2.5, 1.0, 1.5 ),
-		1.0,
-		vec3( 0.137, 0.137, 0.137 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.1,
-				8
-			},
-			0.1,
-			0.0,
-			0.0
 		}
 	},
 	// Spiegelung
@@ -411,6 +377,40 @@ const sphere spheres[ NUM_SPHERES ] = {
 				8
 			},
 			1.0,
+			0.0,
+			0.0
+		}
+	},
+	{
+		vec3( -2.5, 2.0, -3.5 ),
+		1.5,
+		//vec3( 0.247, 0.5, 0.749 ),
+		vec3( 0.01, 0.01, 0.01 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.2,
+				32
+			},
+			1.0,
+			0.0,
+			1.5
+		}
+	},
+	// Diffsion
+	{
+		vec3( 2.5, 1.0, 1.5 ),
+		1.0,
+		vec3( 0.137, 0.137, 0.137 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.1,
+				8
+			},
+			0.1,
 			0.0,
 			0.0
 		}
@@ -532,12 +532,6 @@ bool intersectLight( vec3 origin, vec3 dir, const hitinfo info ){
 	return false;
 }
 
-void swap( out float a, out float b ){
-	float t = a;
-	a = b;
-	b = t;
-}
-
 vec3 reflect( vec3 v_in, vec3 n ){
 	return normalize( v_in - 2 * dot( n, v_in ) * n );
 }
@@ -555,15 +549,17 @@ vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
 vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
 	float cosi = clamp( -1.0, 1.0, dot( v_in, n ) );
 	
-	if( cosi < 0 )
+	if( cosi < 0.0 )
 		cosi = -1.0 * cosi;
 	else {
-		swap( c_old, c_new );
+		float temp = c_old;
+		c_old = c_new;
+		c_new = temp;
 		n = -1.0 * n;
 	}
 	float eta = c_old / c_new;
 	float k = 1 - eta * eta * ( 1 - cosi * cosi );
-	return k < 0 ? vec3(0.0) : eta * v_in + ( eta * cosi - sqrt( k ) ) * n;
+	return k < 0.0 ? vec3(0.0) : eta * v_in + ( eta * cosi - sqrt( k ) ) * n;
 }
 //*/
 /*
@@ -666,7 +662,7 @@ vec4 trace( vec3 origin, vec3 dir ){
 				}
 			}
 
-			p_intensity *= float( NUM_LIGHTS ) / 2.0;
+			//p_intensity *= float( NUM_LIGHTS ) / 2.0;
 			
 			vec3 c_p = c * p_intensity;
 

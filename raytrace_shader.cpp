@@ -60,8 +60,8 @@ static int nextPowerOfTwo( int );
 */
 
 // Image Size
-int width = 1680;
-int height = 1050;
+int width = 1920;
+int height = 1200;
 // Perspective Projection
 float fov = 45.0f * M_PI / 180.0f;
 float aspect = static_cast<float>( width ) / static_cast<float>( height );

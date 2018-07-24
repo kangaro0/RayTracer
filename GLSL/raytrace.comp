@@ -1,6 +1,7 @@
 #version 430 core
 
 layout( binding = 0, rgba32f ) uniform image2D frameBuffer;
+layout( binding = 1, rgba32f ) uniform image2D texture;
 
 uniform float u_time;
 
@@ -15,20 +16,20 @@ uniform vec3 ray11;
 //
 #define MAX_BOUNCES 10
 #define MAX_SCENE_BOUNDS 1E+10
-#define EPSILON 0.00005
-#define NUM_LIGHTS 3
-#define NUM_BOXES 5
-#define NUM_SPHERES 6
+#define EPSILON 0.00002
+#define NUM_LIGHTS 4
+#define NUM_BOXES 10
+#define NUM_SPHERES	5
 
 // Lighting
-#define INTENSITY_AMBIENT 0.5
+#define INTENSITY_AMBIENT 0.8
 
 // Constants
 #define PI 3.14159265359
 
 //	Parameters
-#define BACKGROUND vec4( 0.89, 0.96, 1.0, 1.0 )
-//#define BACKGROUND vec4( 0.0, 0.0, 0.0, 1.0 )
+//#define BACKGROUND vec4( 0.89, 0.96, 1.0, 1.0 )
+#define BACKGROUND vec4( 0.0, 0.0, 0.0, 1.0 )
 
 //
 //	Lights
@@ -40,20 +41,22 @@ struct light {
 };
 
 const light lights[ NUM_LIGHTS ] = {
-	// Sun
 	{
-		vec3( 0.0, sin( -u_time ) * 50, cos( -u_time ) * 50 ),
-		0.7
+		vec3( 1.0, 2.5, 1.0 ),
+		0.2
 	},
 	{
-		vec3( 10.0, 15.0, 5.0 ),
-		0.5
+		vec3( -1.0, 2.5, 1.0 ),
+		0.2
 	},
 	{
-		vec3( -7.5, 5.0, -4.5 ),
+		vec3( 1.0, 2.5, -1.0 ),
+		0.2
+	},
+	{
+		vec3( -1.0, 2.5, -1.0 ),
 		0.2
 	}
-	//*/
 };
 
 // 
@@ -93,52 +96,17 @@ struct sphere {
 };
 
 const box boxes[ NUM_BOXES ] = {
-	/*
-	{
-		vec3( -50.0, -5.1, -50.0),
-		vec3( 50.0, -5.0, 50.0 ),
-		vec3( 0.271, 0.267, 0.349 ),
-		{
-			// Phong
-			{ 
-				1.0,
-				0.5,
-				0.5,
-				1
-			},
-			0.0,	// Reflection
-			0.0,	// Refraction
-			0.0		
-		}
-	},
-	{
-		vec3( -1.25, -1.25, 0.0 ),
-		vec3( 1.25, 1.25, 2.5 ),
-		vec3( 0.914, 0.255, 0.157 ),
-		{
-			{
-				1.0,
-				0.5,
-				0.8,
-				32
-			},
-			0.0,
-			0.8,
-			1.3
-		}
-	}
-	*/
 	// Floor
 	{
-		vec3( -50.0, -0.1, -50.0),
-		vec3( 50.0, 0.0, 50.0 ),
-		vec3( 0.271, 0.267, 0.349 ),
+		vec3( -5.0, -0.1, -5.0),
+		vec3( 5.0, 0.0, 5.0 ),
+		vec3( 1.0, 0.988, 0.941 ),
 		{
 			// Phong
 			{ 
 				1.0,
-				0.5,
-				0.5,
+				0.1,
+				0.1,
 				1
 			},
 			0.0,	// Reflection
@@ -146,102 +114,158 @@ const box boxes[ NUM_BOXES ] = {
 			0.0		
 		}
 	},
-	// Walls
-	/*
+	// Ceiling
 	{
-		vec3( -5.0, 0.0, -5.0 ),
-		vec3( 7.5, 5.0, -4.9 ),
-		vec3( 0.780, 0.631, 0.478 ),
+		vec3( -5.0, 5.0, -5.0),
+		vec3( 5.0, 5.1, 5.0 ),
+		vec3( 1.0, 0.988, 0.941 ),
 		{
-			{
-				1.0,
-				0.5,
-				0.5,
-				1
-			},
-			0.0,
-			0.0,
-			0.0
-		}
-	},
-	{
-		vec3( 7.5, 0.0, -4.9 ),
-		vec3( 7.6, 5.0, 7.6 ),
-		vec3( 0.271, 0.267, 0.349 ),
-		{
+			// Phong
 			{ 
 				1.0,
-				0.5,
-				0.5,
+				0.1,
+				0.1,
 				1
 			},
-			0.0,
-			0.0,
-			0.0
+			0.0,	// Reflection
+			0.0,	// Refraction
+			0.0		
 		}
 	},
-	//*/
-	// Boxes
+	// Left Wall
 	{
-		vec3( -0.5, 0.0, -0.5),
-		vec3( 0.5, 1.0, 0.5 ),
-		vec3( 0.749, 0.247, 0.247 ),
-		{	
+		vec3( -4.9, 0.0, -5.0 ),
+		vec3( -5.0, 5.0, 5.0 ),
+		vec3( 1.0, 0.988, 0.941 ),
+		{
+			// Phong
+			{ 
+				1.0,
+				0.1,
+				0.1,
+				1
+			},
+			0.0,	// Reflection
+			0.0,	// Refraction
+			0.0		
+		}
+	},
+	// Right Wall
+	{
+		vec3( 4.9, 0.0, -5.0 ),
+		vec3( 5.0, 5.0, 5.0 ),
+		vec3( 1.0, 0.988, 0.941 ),
+		{
+			// Phong
+			{ 
+				1.0,
+				0.1,
+				0.1,
+				1
+			},
+			0.0,	// Reflection
+			0.0,	// Refraction
+			0.0		
+		}
+	},
+	// Front Wall
+	{
+		vec3( -4.9, 0.0, -4.9 ),
+		vec3( 5.0, 5.0, -5.0 ),
+		vec3( 1.0, 0.988, 0.941 ),
+		{
+			// Phong
+			{ 
+				1.0,
+				0.1,
+				0.1,
+				1
+			},
+			0.0,	// Reflection
+			0.0,	// Refraction
+			0.0		
+		}
+	},
+	// Back Wall
+	{
+		vec3( -5.0, 0.0, 4.9 ),
+		vec3( 5.0, 5.0, 5.0 ),
+		vec3( 1.0, 0.988, 0.941 ),
+		{
+			// Phong
+			{ 
+				1.0,
+				0.1,
+				0.1,
+				1
+			},
+			0.0,	// Reflection
+			0.0,	// Refraction
+			0.0		
+		}
+	},
+	// Pyramide
+	{
+		vec3( -0.75, 0.0, -0.75 ),
+		vec3( 0.75, 0.5, 0.75 ),
+		vec3( 0.047, 0.153, 0.2 ),
+		{
 			{
 				1.0,
-				0.8,
-				0.2,
-				12
+				0.5,
+				0.5,
+				64
 			},
-			0.0,
 			0.5,
-			1.5
-		}
-	},
-	{
-		vec3( -0.8, 0.0, -1.5 ),
-		vec3( -0.5, 0.3, -1.2 ),
-		vec3( 0.886, 0.404, 0.141 ),
-		{
-			{
-				1.0,
-				0.8,
-				0.2,
-				12
-			},
-			0.9,
 			0.0,
 			0.0
 		}
 	},
 	{
-		vec3( -1.5, 0.0, -0.8 ),
-		vec3( -1.2, 0.3, -0.5 ),
-		vec3( 0.886, 0.404, 0.141 ),
+		vec3( -0.375, 0.5, -0.375 ),
+		vec3( 0.375, 1.0, 0.375 ),
+		vec3( 0.047, 0.153, 0.2 ),
+		{
+			{
+				1.0,
+				0.5,
+				0.5,
+				64
+			},
+			0.5,
+			0.0,
+			0.0
+		}
+	},
+	// Boxes Brechung
+	{
+		vec3( 2.5, 0.0, -1.5 ),
+		vec3( 2.0, 0.5, -1.0 ),
+		vec3( 0.047, 0.153, 0.2 ),
 		{
 			{
 				1.0,
 				0.8,
 				0.2,
-				12
+				64
 			},
-			0.3,
+			0.5,
 			0.0,
 			0.0
-		}
+		} 
 	},
 	{
-		vec3( 0.8, 0.0, -1.1 ),
-		vec3( 1.1, 0.3, -0.8 ),
-		vec3( 0.463, 0.722, 1.0 ),
+		vec3( 1.5, 0.25, -1.5 ),
+		vec3( 1.0, 0.75, -1.0 ),
+		vec3( 0.047, 0.153, 0.2 ),
 		{
 			{
 				1.0,
-				0.0,
 				0.8,
-				16
+				0.2,
+				64
 			},
-			0.2,
+			0.5,
 			0.0,
 			0.0
 		}
@@ -249,77 +273,11 @@ const box boxes[ NUM_BOXES ] = {
 };
 
 const sphere spheres[ NUM_SPHERES ] = {
-	/*
-	{
-		vec3( -1.5, 1.5, -1.5 ),
-		0.5,
-		vec3( 0.447, 0.310, 0.749 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.3,
-				16
-			},
-			0.0,
-			0.8,
-			1.5
-		}
-	},
-	{
-		vec3( 1.5, 1.5, -1.5 ),
-		1.5,
-		vec3( 0.247, 0.384, 0.561 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.3,
-				16
-			},
-			0.8,
-			0.0,
-			1.5
-		}
-	},
-	{
-		vec3( 1.5, -1.5, -1.5 ),
-		1.5,
-		vec3( 0.271, 0.537, 0.333 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.3,
-				16
-			},
-			0.8,
-			0.0,
-			1.5
-		}
-	},
-	{
-		vec3( -1.5, -1.5, -1.5 ),
-		1.5,
-		vec3( 0.945, 0.510, 0.161 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.3,
-				16
-			},
-			0.8,
-			0.0,
-			1.5
-		}
-	}
-	*/
 	// Brechung
 	{
-		vec3( 2.5, 1.5, -3.5 ),
-		0.5,
-		vec3( 1.0, 0.325, 0.051 ),
+		vec3( -0.5, 1.0, -2.0 ),
+		0.75,
+		vec3( 0.0, 0.0, 0.0 ),
 		{
 			{
 				1.0,
@@ -328,89 +286,72 @@ const sphere spheres[ NUM_SPHERES ] = {
 				8
 			},
 			0.0,
-			0.8,
-			1.9
-		}
-	},
-	{
-		vec3( 0.25, 1.0, 2.0 ),
-		0.75,
-		vec3( 1.0, 0.325, 0.051 ),
-		{
-			{
-				1.0,
-				0.3,
-				0.2,
-				4
-			},
-			0.0,
-			0.5,
+			0.7,
 			1.5
 		}
 	},
 	// Spiegelung
 	{
-		vec3( 3.0, 0.5, -1.0 ),
-		0.5,
-		vec3( 0.447, 0.310, 0.749 ),
-		{
-			{
-				1.0,
-				0.5,
-				0.3,
-				8
-			},
-			1.0,
-			0.0,
-			0.0
-		}
-	},
-	{
-		vec3( -3.0, 2.5, 5.0 ),
+		vec3( 2.5, 2.5, 2.5 ),
 		2.5,
-		vec3( 0.447, 0.310, 0.749 ),
-		{
-			{
-				1.0,
-				0.5,
-				0.3,
-				8
-			},
-			1.0,
-			0.0,
-			0.0
-		}
-	},
-	{
-		vec3( -2.5, 2.0, -3.5 ),
-		1.5,
-		//vec3( 0.247, 0.5, 0.749 ),
-		vec3( 0.01, 0.01, 0.01 ),
+		vec3( 1.0, 0.325, 0.051 ),
 		{
 			{
 				1.0,
 				0.3,
 				0.2,
-				32
+				8
 			},
 			1.0,
 			0.0,
-			1.5
+			1.9
 		}
 	},
-	// Diffsion
 	{
-		vec3( 2.5, 1.0, 1.5 ),
-		1.0,
-		vec3( 0.137, 0.137, 0.137 ),
+		vec3( 2.5, 2.5, -2.5 ),
+		1.5,
+		vec3( 0.549, 0.129, 0.192 ),
 		{
 			{
 				1.0,
 				0.3,
-				0.1,
+				0.2,
 				8
 			},
-			0.1,
+			1.0,
+			0.0,
+			1.9
+		}
+	},
+	{
+		vec3( -2.5, 1.0, -1.0 ),
+		0.5,
+		vec3( 0.549, 0.129, 0.192 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.2,
+				8
+			},
+			1.0,
+			0.0,
+			1.9
+		}
+	},
+	// Diffsion
+	{
+		vec3( -2.5, 1.5, 1.5 ),
+		1.5,
+		vec3( 0.101, 0.102, 0.129 ),
+		{
+			{
+				1.0,
+				0.3,
+				0.2,
+				8
+			},
+			0.0,
 			0.0,
 			0.0
 		}
@@ -521,9 +462,8 @@ bool intersectObjects( vec3 origin, vec3 dir, out hitinfo info ){
 	return found;
 }
 
-bool intersectLight( vec3 origin, vec3 dir, const hitinfo info ){
+bool intersectLight( vec3 origin, vec3 dir, const hitinfo info, out hitinfo info_new  ){
 	
-	hitinfo info_new;
 	if( intersectObjects( origin, dir, info_new ) ){
 		
 		if( info.type == info_new.type && info.i == info_new.i )
@@ -582,7 +522,7 @@ float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	vec3 v = normalize( eye - hit );								// Direction to eye
 	float norm = ( p.exp_surface + 2.0 ) / 2 * PI;					// Normalisation factor for specular reflection
 
-	float i_d = p.k_diffuse * l.intensity * max( 0.0, dot( ld, n ) ); 
+	float i_d = p.k_diffuse * l.intensity * dot( ld, n ); 
 	float i_s = p.k_specular * l.intensity * norm * pow( max( 0.0, dot( r, v ) ), p.exp_surface );
 
 	return i_d + i_s;
@@ -629,6 +569,13 @@ vec4 trace( vec3 origin, vec3 dir ){
 				c = b.color;						
 				m = b.mat;			
 				n = normalForBox( p, b );						// Normal at Hitpoint
+
+				// texturing for floor
+				if( info.i == 0 && n == vec3( 0.0, 1.0, 0.0 ) ){
+					ivec2 texCoord = ivec2( int( p.x * 200 + 1000 ), int( p.z * 200 + 1000 ) );
+					vec4 texel = imageLoad( texture, texCoord );
+					c = vec3( texel.x, texel.y, texel.z );
+				}
 				
 
 			} else if( info.type == enum_sphere ){
@@ -655,11 +602,13 @@ vec4 trace( vec3 origin, vec3 dir ){
 				light l = lights[ i ];
 				vec3 l_dir = normalize( p - l.pos );
 
+				hitinfo info_new;
+
 				// object gets hit by light ray
-				if( intersectLight( l.pos, l_dir, info ) ){
+				if( intersectLight( l.pos, l_dir, info, info_new ) ){
 
 					p_intensity += phong( l, p, n, m.p );
-				}
+				} 
 			}
 
 			//p_intensity *= float( NUM_LIGHTS ) / 2.0;

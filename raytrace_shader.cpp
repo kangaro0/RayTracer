@@ -6,6 +6,7 @@
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <array>
 #include <vector>
 #include <cmath>
 #include <ctime>
@@ -28,11 +29,12 @@
 // Initializitation
 void setupRC();
 void init();					
-void createTexture();			
+void createFramebuffer();			
 void createSampler();
 void createFullscreenQuad();
 void createComputeProgram();
 void createQuadProgram();
+void createTexture();
 
 // Loop
 void loop();					// Main loop
@@ -51,7 +53,7 @@ void resizeTexture();			// Resizes the texture on change of window size
 
 
 // Utility
-std::string readFile( const char* );
+std::string readShaderFile( const char* );
 GLuint loadShader( const char*, GLenum );
 static int nextPowerOfTwo( int );
 
@@ -75,12 +77,14 @@ float rotationT = 4.0f;
 	GLuint
 */
 
-GLuint texture = 0;
+GLuint frameBuffer = 0;
 GLuint sampler = 0;
 GLuint vao = 0;
 GLuint vbo = 0;
 GLuint cProgram = 0;
 GLuint qProgram = 0;
+
+GLuint texture = 0;
 
 /*
 	Fullscreen Quad Coordinates
@@ -111,6 +115,7 @@ int uTimeUniform;
 	Other
 */
 int framebufferBinding;
+int textureBinding;
 bool resetFramebuffer = true;
 
 /*
@@ -126,6 +131,11 @@ glm::mat4 invViewProjMatrix;
 glm::vec4 cameraPosition = glm::vec4( 5.0f, 10.0f, -5.0f, 1.0f );
 glm::vec4 cameraLookAt = glm::vec4( 0.0f, 0.0f, 0.0f, 1.0f );
 glm::vec4 cameraUp = glm::vec4( 0.0f, 1.0f, 0.0f, 1.0f );
+
+/*
+	Textures
+*/
+std::vector<char> textureData;
 
 int main( int argc, char** argv ){
 
@@ -161,8 +171,11 @@ void setupRC(){
 }
 
 void init(){
+	// load checkerboard texture
+	 createTexture();
+
 	// create texture/framebuffer
-	createTexture();
+	createFramebuffer();
 
 	// create sampler
 	createSampler();
@@ -193,8 +206,8 @@ void trace(){
 
 	// Change camera position
 	cameraPosition.x = static_cast<float>( sin( -rotationY ) * zoom );
-	cameraPosition.y = 4.5f;
-	cameraPosition.z = static_cast<float>( cos( -rotationY ) * zoom );
+	cameraPosition.y = 5.0f;
+	cameraPosition.z = - static_cast<float>( cos( -rotationY ) * zoom );
 
 	viewMatrix = glm::lookAt( cameraPosition.xyz(), cameraLookAt.xyz(), cameraUp.xyz() );
 
@@ -223,8 +236,9 @@ void trace(){
 	glUniform3f( ray11Uniform, temp.x, temp.y, temp.z );
 
 	// Bind framebuffer texture as writable in shader
-	glBindImageTexture( framebufferBinding, texture, 0, false, 0, GL_WRITE_ONLY, GL_RGBA32F );
-
+	glBindImageTexture( framebufferBinding, frameBuffer, 0, false, 0, GL_WRITE_ONLY, GL_RGBA32F );
+	// Bind texture of floor as readable in shader
+	glBindImageTexture( textureBinding, texture, 0, false, 0, GL_READ_ONLY, GL_RGBA32F );
 	// Send time
 	glUniform1f( uTimeUniform, rotationT );
 
@@ -240,6 +254,7 @@ void trace(){
 
 	// Reset
 	glBindImageTexture( framebufferBinding, 0, 0, false, 0, GL_WRITE_ONLY, GL_RGBA32F );
+	glBindImageTexture( textureBinding, 0, 0, false, 0, GL_READ_ONLY, GL_RGBA32F );
 	glUseProgram( 0 );
 }
 
@@ -250,8 +265,8 @@ void present(){
 	// Bind texture
 	glUseProgram( qProgram );
 	glBindVertexArray( vao );
-	glBindTexture( GL_TEXTURE_2D, texture );
-	glBindSampler( texture, sampler );
+	glBindTexture( GL_TEXTURE_2D, frameBuffer );
+	glBindSampler( frameBuffer, sampler );
 	glDrawArrays( GL_TRIANGLES, 0, 6 );
 
 	// Reset
@@ -330,11 +345,11 @@ void APIENTRY onError( GLenum source, GLenum type, GLuint id, GLenum severity, G
 	std::cout << "GL CALLBACK: " << ( type == GL_DEBUG_TYPE_ERROR ? "** GL ERROR ** " : "" ) << "type = 0x" << type << ", severity = 0x" << severity << ", message = " << message << std::endl;
 }
 
-void createTexture(){
-	std::cout << "Creating texture..." << std::endl;
+void createFramebuffer(){
+	std::cout << "Creating framebuffer..." << std::endl;
 
-	glGenTextures( 1, &texture );
-	glBindTexture( GL_TEXTURE_2D, texture );
+	glGenTextures( 1, &frameBuffer );
+	glBindTexture( GL_TEXTURE_2D, frameBuffer );
 	glTexStorage2D( GL_TEXTURE_2D, 1, GL_RGBA32F, width, height );
 	//glBindTexture( GL_TEXTURE_2D, 0 );
 
@@ -387,9 +402,14 @@ void createComputeProgram(){
 	ray01Uniform = glGetUniformLocation( cProgram, "ray01" );
 	ray11Uniform = glGetUniformLocation( cProgram, "ray11" );
 	uTimeUniform = glGetUniformLocation( cProgram, "u_time" );
+	// framebuffer
 	int loc = glGetUniformLocation( cProgram, "frameBuffer" );
 	glGetUniformiv( cProgram, loc, parameters );
 	framebufferBinding = parameters[ 0 ];
+	// texture
+	loc = glGetUniformLocation( cProgram, "texture" );
+	glGetUniformiv( cProgram, loc, parameters );
+	textureBinding = parameters[ 0 ];
 	glUseProgram( 0 );
 
 	std::cout << "Done.\n" << std::endl;
@@ -415,12 +435,49 @@ void createQuadProgram(){
 	std::cout << "Done.\n" << std::endl;
 }
 
-void resizeTexture(){
-	glDeleteTextures( 1, &texture );
-	createTexture();
+void createTexture( ){
+
+	std::cout << "Creating texture..." << std::endl;
+
+	const char* path = "textures/checkerboard.bmp";
+
+	unsigned char header[ 54 ];
+	unsigned int dataPos;
+	unsigned int width, height;
+	unsigned int size;
+
+	unsigned char* data;
+
+	FILE* file = fopen( path, "rb" );
+	fread( header, 1, 54, file );
+
+	dataPos = *( int* ) &( header[ 0x0A ] );
+	size = *( int* ) &( header[ 0x22 ] );
+	width = *( int* ) &( header[ 0x12 ] );
+	height = *( int* ) &( header[ 0x16 ] );
+
+	if( size == 0 ) size = width * height * 3;
+	if( dataPos == 0 ) dataPos = 54;
+
+	data = new unsigned char[ size ];
+	fread( data, 1, size, file );
+	fclose( file );
+
+	glGenTextures( 1, &texture );
+	glBindTexture( GL_TEXTURE_2D, texture );
+	//glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data );
+	glTexStorage2D( GL_TEXTURE_2D, 1, GL_RGBA32F, width, height );
+	glTexSubImage2D( GL_TEXTURE_2D, 0, 0, 0, width, height, GL_BGR, GL_UNSIGNED_BYTE, data );
+
+	std::cout << "Done.\n" << std::endl;
 }
 
-std::string readFile( const char* filename ){
+void resizeTexture(){
+	glDeleteTextures( 1, &frameBuffer );
+	createFramebuffer();
+}
+
+std::string readShaderFile( const char* filename ){
 
 	std::string content;
 	std::ifstream fileStream( filename, std::ios::in );
@@ -447,7 +504,7 @@ GLuint loadShader( const char* path, GLenum shaderType ){
 
 	GLuint shader = glCreateShader( shaderType );
 
-	std::string shaderString = readFile( path );
+	std::string shaderString = readShaderFile( path );
 	const char* shaderSource = shaderString.c_str();
 
 	GLint result = GL_FALSE;
@@ -478,6 +535,8 @@ GLuint loadShader( const char* path, GLenum shaderType ){
 
 	return shader;
 }
+
+
 
 /*
 	Helper functions

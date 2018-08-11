@@ -330,6 +330,9 @@ void onKeyPress( unsigned char key, int x, int y ){
 		case 'p':
 			save();
 			break;
+		case 'r':
+			
+			break;
 	}
 
 	glutPostRedisplay();

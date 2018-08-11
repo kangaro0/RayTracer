@@ -63,7 +63,7 @@ const light lights[ NUM_LIGHTS ] = {
 //	Material
 //
 
-struct m_phong {
+struct phong {
 	float k_ambient;
 	float k_diffuse;
 	float k_specular;
@@ -71,7 +71,7 @@ struct m_phong {
 };
 
 struct material {
-	m_phong p;
+	phong p;
 	float i_reflection;
 	float i_refraction;
 	float c_medium;
@@ -287,7 +287,7 @@ const sphere spheres[ NUM_SPHERES ] = {
 			},
 			0.0,
 			0.7,
-			1.5
+			0.5
 		}
 	},
 	// Spiegelung
@@ -359,10 +359,17 @@ const sphere spheres[ NUM_SPHERES ] = {
 };
 
 //
+//	Raytype
+//
+const uint enum_reflect;
+const uint enum_refract;
+
+//
 //	HitInfo
 //
-const uint enum_box = 1;
-const uint enum_sphere = 2;
+const uint enum_type_invalid = 1;
+const uint enum_box = 2;
+const uint enum_sphere = 3;
 
 struct hitinfo {
 	uint type;
@@ -370,8 +377,39 @@ struct hitinfo {
 	int i;
 };
 
+hitinfo hi_dummy = {
+	type = enum_type_invalid,
+	near = 0.0,
+	i = -1
+};
+
 //
-//	Functions
+//	State
+//
+const uint enum_state_start;
+const uint enum_state_reflected;
+const uint enum_state_done;
+
+struct trace_state {
+	vec3 origin;
+	vec3 dir;
+	float att;
+	float intensity;
+	hitinfo info;
+	uint state;
+};
+
+trace_state ts_dummy = {
+	origin = vec3( 0.0 ),
+	dir = vec3( 0.0 ),
+	att = 0.0,
+	phong = 0.0,
+	hitinfo = hi_dummy,
+	state = enum_state_start
+};
+
+//
+//	Color
 //
 
 vec3 normalForBox( vec3 hit, const box b ){
@@ -388,6 +426,10 @@ vec3 normalForBox( vec3 hit, const box b ){
 	else
 		return vec3( 0.0, 0.0, 1.0 );
 }
+
+//
+// Intersection
+//
 
 vec2 intersectBox( vec3 origin, vec3 dir, const box b ){
 	vec3 tMin = ( b.min - origin ) / dir;
@@ -472,11 +514,115 @@ bool intersectLight( vec3 origin, vec3 dir, const hitinfo info, out hitinfo info
 	return false;
 }
 
+bool intersect(){
+	// Object	
+	vec3 current_color;		
+	material current_material;
+	// Vectors
+	vec3 point;
+	vec3 normale;
+
+	hitinfo info;
+	if( intersectObjects( origin, dir, info ) ){
+			
+		point = origin + info.near * dir;
+
+		// get data from object
+		if( info.type == enum_box ){
+			box b = boxes[ info.i ];
+
+			// update state
+			state[ current_bounce ].type = enum_box;
+			state[ current_bounce ].index = info.i;
+
+			// update internal
+			current_color = b.color;									
+			current_material = b.mat;										
+			normale = normalForBox( p, b );
+
+			// texturing for floor
+			if( info.i == 0 && n == vec3( 0.0, 1.0, 0.0 ) ){
+				ivec2 texCoord = ivec2( int( p.x * 200 + 1000 ), int( p.z * 200 + 1000 ) );
+				vec4 texel = imageLoad( texture, texCoord );
+				current_color = vec3( texel.x, texel.y, texel.z );
+			}
+		
+		} else if( info.type == enum_sphere ){
+			sphere s = spheres[ info. i ];
+
+			// update state
+			state[ current_bounce ].type = enum_sphere;
+			state[ current_bounce ].index = info.i;
+
+			// update internal
+			current_color = s.color;	
+			current_material = s.mat;
+			normale = normalize( p - s.c );
+		}
+
+		// check if node finished
+		if( current_material.i_reflection == 0.0 && current_material.i_refraction == 0.0 ){
+			state[ current_bounce ].node_finished = true;
+			return true;
+		}
+
+		// distortion fix - check if ray inside another medium than air
+		if( current_bounce != 0 && state[ current_bounce - 1 ].medium == 1.0 && state[ current_bounce ] > 1.0 )
+			point -= n * EPSILON;
+		else {
+			point += n * EPSILON;
+		}
+
+		// calculate reflection
+		state[ current_bounce ].reflected = reflect( dir, n );
+
+		// calculate refraction
+		state[ current_bounce ].refracted = refract( 
+			dir, 
+			n, 
+			current_bounce == 0 ? 1.0 : state[ current_bounce - 1 ], 
+			current_material.c_medium;
+		);
+
+		// Phong
+		float phong_intensity = current.material.p.k_ambient * INTENSITY_AMBIENT;
+		for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
+
+			light l = lights[ i ];
+			vec3 l_dir = normalize( p - l.pos );
+
+			hitinfo info_new;
+			if( intersectLight( l.pos, l_dir, info, info_new ) ){
+				phong_intensity += phong( l, p, n, m.p );
+			} 
+		}
+		
+		state[ current_bounce ].color = current_color * phong_intensity;
+		return true;
+	} else {
+		state[ current_bounce ].color = vec3( BACKGROUND );
+		return false;
+	}
+}
+
+bool intersect( vec3 origin, vec3 dir, out trace_state state, uint type ){
+
+	hitinfo info;
+	if( intersectsObject( origin, dir, hitinfo ) ){
+
+		
+	}
+	return false;
+}
+
+//
+//	Reflection & Refraction
+//
+
 vec3 reflect( vec3 v_in, vec3 n ){
 	return normalize( v_in - 2 * dot( n, v_in ) * n );
 }
 
-///*
 vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
 	float cos_ai = dot( v_in, n );
 	float angle_in = acos( cos_ai );
@@ -484,38 +630,12 @@ vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
 	float ratio = c_old / c_new;
 	return ratio * ( v_in + cos_ai * n ) - n * sqrt( 1 - pow( ratio, 2 ) * pow( sin_ai, 2 ) );
 }
-//*/
-/*
-vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
-	float cosi = clamp( -1.0, 1.0, dot( v_in, n ) );
-	
-	if( cosi < 0.0 )
-		cosi = -1.0 * cosi;
-	else {
-		float temp = c_old;
-		c_old = c_new;
-		c_new = temp;
-		n = -1.0 * n;
-	}
-	float eta = c_old / c_new;
-	float k = 1 - eta * eta * ( 1 - cosi * cosi );
-	return k < 0.0 ? vec3(0.0) : eta * v_in + ( eta * cosi - sqrt( k ) ) * n;
-}
-//*/
-/*
-vec3 refract( vec3 v_in, vec3 n, float c_old, float c_new ){
-	vec3 a = dot( n, v_in ) * n;
-	vec3 b = v_in - a;
 
-	float beta = c_old / c_new;
-	float alpha = sqrt( 1 + ( 1 - pow( beta, 2 ) ) * ( pow( length( b ), 2 ) / pow( length( a ), 2 ) ) );
+//
+//	Lighting
+//
 
-	vec3 t = alpha * a + beta * b;
-	return t;
-}
-//*/
-
-float phong( light l, vec3 hit, vec3 n, m_phong p ){
+float calulcatePhong( light l, vec3 hit, vec3 n, m_phong p ){
 	vec3 dir = normalize( hit - l.pos );							// Direction of light to hitpoint
 	vec3 ld = normalize( l.pos - hit );								// Direction of hitpoint to light
 	vec3 r = normalize( 2 * dot( ld, n ) * n - ld );				// Direction of perfect reflection
@@ -528,142 +648,133 @@ float phong( light l, vec3 hit, vec3 n, m_phong p ){
 	return i_d + i_s;
 }
 
-vec4 trace( vec3 origin, vec3 dir ){
-	
-	// Color
-	vec3 color = vec3(1.0);
-	float p_intensity = 0.0;
+void trace( vec3 origin, vec3 dir ){
+
+	vec3 color = vec3( 0.0 );
 	float att = 1.0;
+	uint ray_type = enum_reflect;
 
-	// Medium
-	float c_medium = 1.0;
+	// state
+	float current_att = 1.0;
+	trace_state states[ MAX_BOUNCES ];
 
-	// State
-	bool ray_inside = false;
+	// intialize first state
+	states[ 0 ] = ts_dummy;
+	states[ 0 ].origin = origin;
+	states[ 0 ].dir = dir;
 
-	// Vectors
-	vec3 p;												// Hitpoint
-	vec3 n;												// Normale
-	vec3 r;												// Reflection
-	vec3 t;												// Refraction
 
-	// Current Object info
-	vec3 c;												// Object color
-	material m;											// Material
+	int current_bounce = 0;
+	while( true ){
 
-	for( int b = 0 ; b < MAX_BOUNCES ; b++ ){
+		// get current state
+		state state = states[ current_bounce ];
+		
+		// node is finished?
+		if( state.state == enum_state_done ){
+			if( current_bounce == 0 ){
+				return color;						// tracing done
+			}
+			else {
+				// when node is finished -> calculate color
 
-		if( att <= 0.1 )
-			break;
 
-		hitinfo info;
-		if( intersectObjects( origin, dir, info ) ){
-			
-			// hitpoint
-			p = origin + info.near * dir;
+				current_bounce -= 1;
+				continue;
+			}
+		} else {
+			// set current mode
+			if( state.state == enum_state_start )
+				ray_type = enum_reflect;
+			else 
+				ray_type = enum_refract;
 
-			// get data from object
-			if( info.type == enum_box ){
-
-				box b = boxes[ info .i ];						// Object that was hit
-				c = b.color;						
-				m = b.mat;			
-				n = normalForBox( p, b );						// Normal at Hitpoint
-
-				// texturing for floor
-				if( info.i == 0 && n == vec3( 0.0, 1.0, 0.0 ) ){
-					ivec2 texCoord = ivec2( int( p.x * 200 + 1000 ), int( p.z * 200 + 1000 ) );
-					vec4 texel = imageLoad( texture, texCoord );
-					c = vec3( texel.x, texel.y, texel.z );
-				}
+			// intersect
+			hitinfo info;
+			if( intersect( state.origin, state.dir, info, ray_type ) ){
 				
+				// object that was hit
+				vec3 point = state.origin + info.near * dir;
+				vec3 normal;
+				vec3 obj_color;
+				vec3 att;
+				material m;
+				phong p;
 
-			} else if( info.type == enum_sphere ){
+				if( info.type == enum_box ){
+					box b = boxes[ info.i ].c;
+					normal = getNormalForBox( point, b );
+					obj_color = b.c;
+					att = ray_type == enum_reflect ? b.material.i_reflection : b.material.i_reflection;
+					m = b.material;
+					p = m.phong;
+				} else {
+					sphere s = spheres[ info.i ];
+					normal = normalize( point - s.c );
+					obj_color = s.c;
+					att = ray_Type == enum_reflect _ b.material.i_reflection : s.material.i_reflection;
+					m = s.material;
+					p = m.phong;
+				}
 
-				sphere s = spheres[ info. i ];
-				c = s.color;	
-				m = s.mat;
-				n = normalize( p - s.c );
-			}
+				// phong
+				float intensity = 0;
+				for( int i = 0 ; i < MAX_LIGHTS ; i++ ){
+					light l = lights[ i ];
 
-			if( ray_inside )
-					p -= n * EPSILON;
-			else
-				p += n * EPSILON;
-
-			// calculate reflection & refraction
-			r = reflect( dir, n );
-			t = refract( dir, n, c_medium, ray_inside ? m.c_medium : 1.0 );
-
-			// Phong
-			p_intensity = m.p.k_ambient * INTENSITY_AMBIENT;
-			for( int i = 0 ; i < NUM_LIGHTS ; i++ ){
-
-				light l = lights[ i ];
-				vec3 l_dir = normalize( p - l.pos );
-
-				hitinfo info_new;
-
-				// object gets hit by light ray
-				if( intersectLight( l.pos, l_dir, info, info_new ) ){
-
-					p_intensity += phong( l, p, n, m.p );
-				} 
-			}
-
-			//p_intensity *= float( NUM_LIGHTS ) / 2.0;
-			
-			vec3 c_p = c * p_intensity;
-
-			color = ( b == 0 ? c_p : color + c_p * att );
-
-		} else {
-			
-			color = ( b == 0 ? vec3( BACKGROUND ) : color + vec3( BACKGROUND ) );
-			break;
-		}
-
-		// prepare for next cycle
-		origin = p;
-		if( m.i_reflection > 0.0 ){
-
-			dir = r;
-			att *= m.i_reflection * dot( dir, n );
-
-		} else if( m.i_refraction > 0.0 ) {
-			
-			// total internal reflection
-			bvec3 eq = equal( t, vec3( 0.0 ) );
-			if( eq.x && eq.y && eq.z ){
-				dir = normalize( r );
+					hitinfo info_light;
+					if( intersectsLight( l.pos, normalize( p - l.pos ), info, info_light ) ){
+						intensity += calulcatePhong( l, point, normal, p );
+					}
+				}
+			// if no intersection set node to finished
 			} else {
-				dir = normalize( t );
-				c_medium = ray_inside ? 1.0 : m.c_medium;
-				ray_inside = !ray_inside;	
+				state.state = enum_state_done;
 			}
 
-			att *= m.i_refraction;
+			// next state
+			if( current_bounce + 1 == MAX_BOUNCES ){
+				state.state = enum_state_done;
+				continue;
+			} else {
+				// update state
+				if( state.state == enum_state_start )
+					att *= m.i_reflection;
 
-		} else {
-			break;
+					state.state = enum_state_reflected;
+				else
+					state.state == enum_state_done;
+
+				current_bounce += 1;
+				continue;
+			}
 		}
 	}
-
-	return vec4( color, 1.0 * p_intensity );
 }
 
-layout( local_size_x = 16, local_size_y = 16 ) in;
+vec4 calculateColor(){
+	vec4 final_color = vec( 0.0 );
+
+
+
+}
+
+layout( local_size_x = 8, local_size_y = 8 ) in;
 
 //
 //	Main
 //
 void main( void ){
+	// get pixel data
 	ivec2 pix = ivec2( gl_GlobalInvocationID.xy );
 	ivec2 size = imageSize( frameBuffer );
 	if( pix.x >= size.x || pix.y >= size.y )											// Compute Shader Workgroups Size ( x | y ) ^ 2
 		return;
 	vec2 pos = ( vec2( pix ) + vec2( 0.5 ) ) / vec2( size );
 	vec3 dir = mix( mix( ray00, ray01, pos.y ), mix( ray10, ray11, pos.y ), pos.x );
-	vec4 color = trace( eye, normalize( dir ) );
+
+	trace( eye, normalize( dir ) );
+
+	// save pixel to quad-texture
 	imageStore( frameBuffer, pix, color );
 }
